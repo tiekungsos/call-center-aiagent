@@ -11,6 +11,7 @@ import {
 } from '@google/genai';
 import { bufFromInt16, int16FromBuf, Upsampler8to16 } from './audio.js';
 import { getActiveAgent, type ResolvedAgent } from './core/agentConfig.js';
+import { analyzeCall } from './core/analytics.js';
 import * as store from './core/store.js';
 import { CallLogger } from './logger.js';
 import { CallAction, runTool } from './tools.js';
@@ -92,6 +93,8 @@ export class CallAgent extends EventEmitter {
     this.log.write('call_end', {});
     const recording = process.env.RECORD_CALLS === '1' ? `recordings/${this.callId}.wav` : undefined;
     void store.endCall(this.callId, recording);
+    // P4: สรุป + intent + sentiment หลังวางสาย (background)
+    void analyzeCall(this.callId);
     this.session?.close();
   }
 

@@ -109,6 +109,12 @@ export async function startCall(c: {
 
 export const setCallAction = (id: string, action: string) => q(`update calls set action=$2 where id=$1`, [id, action]);
 
+export const updateCallAnalysis = (id: string, a: { summary?: string; intent?: string; sentiment?: string }) =>
+  q(
+    `update calls set summary=coalesce($2, summary), intent=coalesce($3, intent), sentiment=coalesce($4, sentiment) where id=$1`,
+    [id, a.summary ?? null, a.intent ?? null, a.sentiment ?? null],
+  );
+
 export const endCall = (id: string, recordingPath?: string) =>
   q(`update calls set ended_at=now(), recording_path=coalesce($2, recording_path) where id=$1`, [id, recordingPath ?? null]);
 
@@ -201,3 +207,19 @@ export const heatmap = (tenantId: string) =>
      from calls where tenant_id=$1 group by 1, 2 order by 1, 2`,
     [tenantId],
   );
+
+/** P4: แยกตาม intent / sentiment + ค่าเฉลี่ยความยาวสาย */
+export async function breakdown(tenantId: string) {
+  const [intents, sentiments, channels] = await Promise.all([
+    q(
+      `select coalesce(intent, 'ไม่ระบุ') as label, count(*)::int as n from calls
+       where tenant_id=$1 group by 1 order by n desc limit 10`,
+      [tenantId],
+    ),
+    q(`select coalesce(sentiment, 'ไม่ระบุ') as label, count(*)::int as n from calls where tenant_id=$1 group by 1 order by n desc`, [tenantId]),
+    q(`select channel as label, count(*)::int as n from calls where tenant_id=$1 group by 1 order by n desc`, [tenantId]),
+  ]);
+  return { intents: intents ?? [], sentiments: sentiments ?? [], channels: channels ?? [] };
+}
+
+export const setCallSummary = (id: string, summary: string) => q(`update calls set summary=$2 where id=$1`, [id, summary]);

@@ -3,6 +3,7 @@ import { WebSocketServer } from 'ws';
 import { handleLineWebhook, verifyLineSignature } from './chat/line.js';
 import { handleChatWs } from './chat/ws.js';
 import { invalidateActiveAgent } from './core/agentConfig.js';
+import { analyzeCall } from './core/analytics.js';
 import * as knowledge from './core/knowledge.js';
 import * as store from './core/store.js';
 import { dbEnabled } from './db.js';
@@ -84,6 +85,16 @@ export function buildApi() {
   app.get<{ Querystring: Q }>('/api/stats/heatmap', async (req) => {
     const t = await tenantOf(req.query.tenant);
     return { heatmap: t ? ((await store.heatmap(t.id)) ?? []) : [] };
+  });
+
+  // --- P4: analytics ---
+  app.get<{ Querystring: Q }>('/api/stats/breakdown', async (req) => {
+    const t = await tenantOf(req.query.tenant);
+    return { breakdown: t ? await store.breakdown(t.id) : { intents: [], sentiments: [], channels: [] } };
+  });
+
+  app.post<{ Params: { id: string } }>('/api/calls/:id/analyze', async (req) => {
+    return { analysis: (await analyzeCall(req.params.id)) ?? null };
   });
 
   // --- P1: คลังความรู้ (RAG) ---

@@ -1,5 +1,6 @@
 import { GoogleGenAI, type Content, type Part } from '@google/genai';
 import { getActiveAgent, type ResolvedAgent } from '../core/agentConfig.js';
+import { analyzeCall } from '../core/analytics.js';
 import * as store from '../core/store.js';
 import { CallLogger } from '../logger.js';
 import { CallAction, runTool } from '../tools.js';
@@ -52,6 +53,7 @@ export class ChatSession {
   close() {
     this.log.write('call_end', {});
     void store.endCall(this.callId);
+    void analyzeCall(this.callId);
   }
 
   /** 1 รอบสนทนา: วนเรียกโมเดลจนกว่าจะได้คำตอบสุดท้าย (รองรับ tool calls หลายรอบ) */
