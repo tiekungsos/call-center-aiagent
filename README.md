@@ -76,7 +76,7 @@ Production ดึงโค้ดด้วย git จาก `git@github.com:tieku
 git push origin main
 
 # server: ดึง + recreate container ที่เกี่ยวข้อง
-ssh root@72.61.149.136 'cd /opt/aileo-callcenter && ./scripts/deploy.sh'
+ssh root@72.61.149.136 'cd /root/aileo-callcenter && ./scripts/deploy.sh'
 ```
 
 `scripts/deploy.sh` จะ `git pull --ff-only` แล้ว
@@ -86,7 +86,7 @@ ssh root@72.61.149.136 'cd /opt/aileo-callcenter && ./scripts/deploy.sh'
 
 ครั้งแรกที่ server (แปลงโฟลเดอร์เดิมเป็น git checkout โดยไม่แตะ `.env`, `logs/`, `recordings/`):
 ```bash
-cd /opt/aileo-callcenter
+cd /root/aileo-callcenter
 git init -b main
 git remote add origin https://github.com/tiekungsos/call-center-aiagent.git
 git fetch origin && git checkout -f -B main origin/main

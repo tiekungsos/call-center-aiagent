@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Deploy บน server — รันจาก root ของ repo (เช่น /opt/aileo-callcenter)
+# Deploy บน server — รันจาก root ของ repo (เช่น /root/aileo-callcenter)
 #   ./scripts/deploy.sh
 #
 # หลักการ:
