@@ -1,4 +1,7 @@
 import Fastify from 'fastify';
+import { WebSocketServer } from 'ws';
+import { handleLineWebhook, verifyLineSignature } from './chat/line.js';
+import { handleChatWs } from './chat/ws.js';
 import { invalidateActiveAgent } from './core/agentConfig.js';
 import * as knowledge from './core/knowledge.js';
 import * as store from './core/store.js';
@@ -15,6 +18,16 @@ async function tenantOf(slug?: string) {
 /** REST API สำหรับ console (P3) และ analytics (P4) — แยกพอร์ตจาก telephony bridge */
 export function buildApi() {
   const app = Fastify({ logger: false });
+
+  // เก็บ raw body ไว้ตรวจ signature ของ LINE (X-Line-Signature)
+  app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
+    (req as unknown as { rawBody?: Buffer }).rawBody = body as Buffer;
+    try {
+      done(null, JSON.parse((body as Buffer).toString('utf8')));
+    } catch (err) {
+      done(err as Error, undefined);
+    }
+  });
 
   // เปิด CORS ให้ console (Next.js) เรียกได้ระหว่าง dev
   app.addHook('onSend', async (_req, reply, payload) => {
@@ -106,6 +119,23 @@ export function buildApi() {
   app.delete<{ Params: { id: string } }>('/api/knowledge/:id', async (req) => {
     await knowledge.removeDoc(req.params.id);
     return { deleted: true };
+  });
+
+  // --- P2: LINE OA webhook ---
+  app.post('/line/webhook', async (req, reply) => {
+    const raw = (req as unknown as { rawBody?: Buffer }).rawBody;
+    if (!raw || !verifyLineSignature(raw, req.headers['x-line-signature'] as string | undefined)) {
+      return reply.code(401).send({ error: 'invalid signature' });
+    }
+    await handleLineWebhook((req.body ?? {}) as { events?: never[] });
+    return { ok: true };
+  });
+
+  // --- P2: web widget (WebSocket) ---
+  const wss = new WebSocketServer({ noServer: true });
+  app.server.on('upgrade', (req, socket, head) => {
+    if (req.url?.startsWith('/chat')) wss.handleUpgrade(req, socket, head, (ws) => handleChatWs(ws));
+    else socket.destroy();
   });
 
   return app;
