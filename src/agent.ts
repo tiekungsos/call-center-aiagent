@@ -10,23 +10,18 @@ import {
   StartSensitivity,
 } from '@google/genai';
 import { bufFromInt16, int16FromBuf, Upsampler8to16 } from './audio.js';
+import { getActiveAgent, type ResolvedAgent } from './core/agentConfig.js';
+import * as store from './core/store.js';
 import { CallLogger } from './logger.js';
-import { getActiveProfile } from './profiles/index.js';
-import { buildSystemPrompt } from './prompt.js';
-import { CallAction, runTool, toolsFor } from './tools.js';
+import { CallAction, runTool } from './tools.js';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const MODEL = process.env.GEMINI_MODEL ?? 'gemini-3.8-live';
 // ponytail: VAD แบบ peak amplitude ใช้วัด latency อย่างเดียว, ปรับค่าถ้าสายมี noise สูง
 const VOICE_PEAK = 1500;
 
-// บริบทของ agent เลือกด้วย env AGENT_PROFILE (ดู src/profiles/)
-const PROFILE = getActiveProfile();
-const SYSTEM_PROMPT = buildSystemPrompt(PROFILE);
-const TOOLS = toolsFor(PROFILE);
-
 /**
  * 1 สาย = 1 CallAgent = 1 Gemini Live session
+ * บริบท (persona/ฐานความรู้/เครื่องมือ) resolve จาก DB ก่อน ถ้าไม่มี DB ใช้โปรไฟล์ในโค้ด
  * events:
  *   'audio'       (pcm24k: Int16Array)  เสียง AI ที่ต้องเล่นให้ผู้โทร
  *   'interrupted' ()                     ผู้โทรพูดแทรก -> ล้าง buffer เสียงฝั่งโทรศัพท์
@@ -34,6 +29,7 @@ const TOOLS = toolsFor(PROFILE);
  */
 export class CallAgent extends EventEmitter {
   readonly log: CallLogger;
+  private cfg?: ResolvedAgent;
   private session?: Session;
   private ready = false;
   private closed = false;
@@ -56,6 +52,15 @@ export class CallAgent extends EventEmitter {
 
   async start() {
     try {
+      this.cfg = await getActiveAgent();
+      void store.startCall({
+        id: this.callId,
+        tenantId: this.cfg.tenantId,
+        agentId: this.cfg.agentId,
+        channel: 'voice',
+        direction: 'inbound',
+        callerNumber: this.callerNumber,
+      });
       await this.connect();
       const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
       this.session!.sendClientContent({
@@ -85,18 +90,22 @@ export class CallAgent extends EventEmitter {
     clearTimeout(this.actionTimer);
     this.flushTranscripts();
     this.log.write('call_end', {});
+    const recording = process.env.RECORD_CALLS === '1' ? `recordings/${this.callId}.wav` : undefined;
+    void store.endCall(this.callId, recording);
     this.session?.close();
   }
 
   private async connect() {
+    const cfg = this.cfg;
+    if (!cfg) throw new Error('agent config not resolved');
     this.ready = false;
     this.session = await ai.live.connect({
-      model: MODEL,
+      model: cfg.model,
       config: {
         responseModalities: [Modality.AUDIO],
-        systemInstruction: SYSTEM_PROMPT,
-        tools: [{ functionDeclarations: TOOLS }],
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: process.env.VOICE ?? 'Zephyr' } } },
+        systemInstruction: cfg.systemPrompt,
+        tools: [{ functionDeclarations: cfg.tools }],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: cfg.voice } } },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
         // สายโทรศัพท์มี noise -> ลดความไวเริ่มพูด กัน barge-in หลอก
@@ -185,6 +194,20 @@ export class CallAgent extends EventEmitter {
         log: this.log,
       });
       this.log.write('tool', { name: fc.name, args: fc.args, result: res.response });
+      void store.addToolCall(this.callId, fc.name ?? '', fc.args, res.response);
+      const ticketId = (res.response as { ticket_id?: string }).ticket_id;
+      if (ticketId) {
+        const a = (fc.args ?? {}) as Record<string, string>;
+        void store.addTicket({
+          id: ticketId,
+          tenantId: this.cfg?.tenantId,
+          callId: this.callId,
+          category: a.category,
+          summary: a.summary,
+          contactName: a.contact_name,
+          callbackNumber: a.callback_number,
+        });
+      }
       functionResponses.push({ id: fc.id, name: fc.name, response: res.response, scheduling: res.scheduling });
       if (res.action) this.setPendingAction(res.action);
     }
@@ -206,21 +229,30 @@ export class CallAgent extends EventEmitter {
     this.pendingAction = undefined;
     clearTimeout(this.actionTimer);
     this.log.write('action', { action: a });
+    void store.setCallAction(this.callId, a);
     this.emit('action', a);
   }
 
   private logLatency() {
     this.awaitingReply = false;
     const now = Date.now();
-    this.log.write('latency', {
-      fromTranscriptMs: now - this.lastCallerTxAt,
-      fromSpeechEndMs: this.lastVoiceAt ? now - this.lastVoiceAt : null,
-    });
+    const fromTranscriptMs = now - this.lastCallerTxAt;
+    const fromSpeechEndMs = this.lastVoiceAt ? now - this.lastVoiceAt : null;
+    this.log.write('latency', { fromTranscriptMs, fromSpeechEndMs });
+    void store.addMetric(this.callId, fromTranscriptMs, fromSpeechEndMs);
   }
 
   private flushTranscripts() {
-    if (this.tx.caller.trim()) this.log.write('transcript', { role: 'caller', text: this.tx.caller.trim() });
-    if (this.tx.agent.trim()) this.log.write('transcript', { role: 'agent', text: this.tx.agent.trim() });
+    if (this.tx.caller.trim()) {
+      const text = this.tx.caller.trim();
+      this.log.write('transcript', { role: 'caller', text });
+      void store.addTurn(this.callId, 'caller', text);
+    }
+    if (this.tx.agent.trim()) {
+      const text = this.tx.agent.trim();
+      this.log.write('transcript', { role: 'agent', text });
+      void store.addTurn(this.callId, 'agent', text);
+    }
     this.tx = { caller: '', agent: '' };
   }
 }

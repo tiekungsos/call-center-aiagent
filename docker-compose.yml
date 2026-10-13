@@ -20,5 +20,26 @@ services:
       - bridge_node_modules:/app/node_modules
     restart: unless-stopped
 
+  # Postgres สำหรับ calls/turns/tickets/analytics (P0) — bridge (host network) ต่อผ่าน 127.0.0.1
+  # ถ้าไม่ตั้ง DATABASE_URL ใน .env ฝั่ง bridge จะข้าม DB ไปใช้โปรไฟล์ในโค้ด + log JSONL
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aileo}
+      # default นี้เป็น placeholder สำหรับ dev เท่านั้น — production ต้องตั้ง POSTGRES_PASSWORD ใน .env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_dotenv}
+      POSTGRES_DB: ${POSTGRES_DB:-aileo}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aileo} -d ${POSTGRES_DB:-aileo}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
 volumes:
   bridge_node_modules:
+  pgdata:

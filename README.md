@@ -33,6 +33,9 @@ flowchart LR
 | `src/audio.ts` | G.711 μ-law + resample 8k↔16k/24k (FIR low-pass) + WAV |
 | `src/logger.ts` | เขียน `logs/<callId>.jsonl` (transcript, tool, latency, action, error) |
 | `src/calls-tail.ts` | `npm run calls:tail` — follow ดูสายล่าสุดแบบเรียลไทม์ |
+| `src/db.ts` + `db/schema.sql` | Postgres pool + migrate (schema แบบ multi-tenant, รันซ้ำได้) |
+| `src/core/` | Conversation core: resolve agent จาก DB (fallback โปรไฟล์ในโค้ด) + `store` (calls/turns/tickets/metrics) |
+| `src/api.ts` | REST API (Fastify) สำหรับ console (P3) / analytics (P4) |
 
 ## บริบทธุรกิจ (Profile)
 ตัว agent ไม่ผูกกับธุรกิจใดธุรกิจหนึ่ง เลือกบริบทด้วย env `AGENT_PROFILE`:
@@ -68,6 +71,36 @@ npm run typecheck      # ตรวจ type
 - bridge ฟังเฉพาะ `127.0.0.1` เป็นค่าเริ่มต้น (Asterisk อยู่เครื่องเดียวกัน, Twilio เข้าผ่าน reverse proxy) เปลี่ยนได้ด้วย `BIND_HOST`
 - env ที่ใช้: `GEMINI_API_KEY`, `GEMINI_MODEL`, `VOICE`, `AGENT_PROFILE`, `BUSINESS_NAME`, `PORT`, `AUDIOSOCKET_PORT`, `LOG_DIR`, `PUBLIC_HOST`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `OFFICER_TRANSFER_NUMBER`, `EMERGENCY_TRANSFER_NUMBER`, `ASTERISK_BIND_IP`, `SIP_PASSWORD_1001/2001/2002`, `RECORD_CALLS`, `DEBUG_AUDIO` (คำอธิบายอยู่ใน `.env.example`)
 
+## Postgres + REST API (P0)
+เก็บ `calls` / `turns` / tool calls / `tickets` / latency ลง Postgres และเปิด REST API ให้ console (P3) กับ analytics (P4) ใช้ต่อ
+
+```bash
+# ตั้ง POSTGRES_PASSWORD ใน .env ก่อน แล้วเปิด DB
+docker compose up -d postgres
+# bridge จะ migrate schema เองตอน boot (db/schema.sql — idempotent รันซ้ำได้)
+```
+
+- **DB ไม่บังคับ** — ถ้าไม่ตั้ง `DATABASE_URL` bridge จะข้าม DB แล้วใช้โปรไฟล์ในโค้ด + `logs/*.jsonl` เหมือนเดิม (สายไม่สะดุดถ้า DB ล่ม เพราะ query ที่ fail จะถูกกลืนและ log ไว้)
+- tenant/agent ถูก seed จากโปรไฟล์ในโค้ดครั้งแรกที่ boot แล้วเก็บใน DB — แก้ทีหลังจาก console ผ่าน `PATCH /api/agents/:id` (มีผลกับสายใหม่ภายใน `AGENT_CACHE_TTL_MS`)
+- ออกแบบ **multi-tenant** (`tenant_id` ทุกตาราง) แต่รันลูกค้าเดียวผ่าน `TENANT_SLUG`
+
+ตาราง: `tenants`, `agents`, `calls`, `turns`, `tool_calls`, `turn_metrics`, `tickets`, `contacts`, `knowledge_documents`
+
+REST API (พอร์ต `API_PORT`, default 8090):
+
+| Endpoint | หน้าที่ |
+|---|---|
+| `GET /health` | สถานะ + DB on/off |
+| `GET /api/tenants` | รายชื่อ tenant |
+| `GET /api/agents?tenant=` | agent ของ tenant |
+| `GET /api/agents/:id` | รายละเอียด agent |
+| `PATCH /api/agents/:id` | แก้ persona / ฐานความรู้ / tools / voice / status |
+| `GET /api/calls?tenant=&limit=&offset=` | รายการสาย |
+| `GET /api/calls/:id` | สาย + transcript + tool calls + latency |
+| `GET /api/tickets?tenant=` | เรื่องร้องเรียน / ขอติดต่อกลับ |
+| `GET /api/stats/overview?tenant=` | ภาพรวม (จำนวนสาย, latency เฉลี่ย, ticket ค้าง) |
+| `GET /api/stats/heatmap?tenant=` | ช่วงเวลาที่สายเยอะ |
+
 ## Deploy (git)
 Production ดึงโค้ดด้วย git จาก `git@github.com:tiekungsos/call-center-aiagent.git` (repo public → server ใช้ HTTPS ได้ ไม่ต้องมี key)
 
@@ -80,9 +113,12 @@ ssh root@72.61.149.136 'cd /root/aileo-callcenter && ./scripts/deploy.sh'
 ```
 
 `scripts/deploy.sh` จะ `git pull --ff-only` แล้ว
-- `docker/` เปลี่ยน → `docker compose up -d --build asterisk` (ตัดสายที่คุยอยู่ชั่วคราว)
+- `docker/asterisk/` เปลี่ยน → `docker compose up -d --build asterisk` (ตัดสายที่คุยอยู่ชั่วคราว)
+- `docker-compose*.yml` เปลี่ยน → `docker compose up -d` (recreate ทุก service)
 - `package.json` เปลี่ยน → `--force-recreate bridge` (รัน `npm install` ใหม่)
 - นอกนั้น → `up -d bridge` (โค้ดใน `src/` ถูก mount แบบ live ผ่าน tsx watch จึงมีผลทันที)
+
+เพิ่ม service ใหม่ครั้งแรก (เช่น Postgres) ให้รัน `docker compose up -d` บน server หนึ่งครั้งก่อน แล้วตั้ง `POSTGRES_PASSWORD` + `DATABASE_URL` ใน `.env`
 
 ครั้งแรกที่ server (แปลงโฟลเดอร์เดิมเป็น git checkout โดยไม่แตะ `.env`, `logs/`, `recordings/`):
 ```bash

@@ -1,17 +1,22 @@
 import 'dotenv/config';
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
+import { buildApi } from './api.js';
 import { startAudioSocketServer, takeNextAction } from './audiosocket.js';
-import { getActiveProfile } from './profiles/index.js';
+import { getActiveAgent } from './core/agentConfig.js';
+import { migrate } from './db.js';
 import { handleTwilio } from './twilio.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
+const API_PORT = Number(process.env.API_PORT ?? 8090);
 // ฟังเฉพาะ localhost: Asterisk อยู่เครื่องเดียวกัน, Twilio ให้ผ่าน reverse proxy
 const HOST = process.env.BIND_HOST ?? '127.0.0.1';
 const LOCAL = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
-const profile = getActiveProfile();
-console.log(`[profile] ${profile.id} (${profile.label})`);
+// เตรียม DB (ถ้าตั้ง DATABASE_URL) + resolve agent (seed tenant/agent ให้ครั้งแรก)
+const hasDb = await migrate();
+const agent = await getActiveAgent();
+console.log(`[profile] ${agent.profileId} (${agent.name}) tenant=${agent.tenantId ?? '-'} db=${hasDb ? 'on' : 'off'}`);
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
@@ -48,3 +53,10 @@ server.on('upgrade', (req, sock, head) => {
 
 server.listen(PORT, HOST, () => console.log(`HTTP/WS listening ${HOST}:${PORT}`));
 startAudioSocketServer(Number(process.env.AUDIOSOCKET_PORT ?? 9093), HOST);
+
+// REST API สำหรับ console/analytics
+const api = buildApi();
+api
+  .listen({ port: API_PORT, host: HOST })
+  .then(() => console.log(`API listening ${HOST}:${API_PORT}`))
+  .catch((err) => console.error('[api]', err));

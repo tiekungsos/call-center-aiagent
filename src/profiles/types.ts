@@ -17,6 +17,10 @@ export interface BusinessProfile {
   knowledgeBase: string;
   /** หมายเหตุสไตล์พูดเฉพาะธุรกิจ ต่อท้ายสไตล์กลาง (ถ้ามี) */
   styleExtra?: string;
+  /** ค่าเริ่มต้นเสียงของโมเดล (env VOICE ทับได้) */
+  voice?: string;
+  /** ค่าเริ่มต้นโมเดล (env GEMINI_MODEL ทับได้) */
+  model?: string;
   /** เครื่องมือเฉพาะธุรกิจ — เครื่องมือกลาง (transfer/create_ticket/end_call) ถูกเพิ่มให้อัตโนมัติ */
   tools: FunctionDeclaration[];
 }
