@@ -36,6 +36,10 @@ flowchart LR
 | `src/db.ts` + `db/schema.sql` | Postgres pool + migrate (schema แบบ multi-tenant, รันซ้ำได้) |
 | `src/core/` | Conversation core: resolve agent จาก DB (fallback โปรไฟล์ในโค้ด) + `store` (calls/turns/tickets/metrics) |
 | `src/api.ts` | REST API (Fastify) สำหรับ console (P3) / analytics (P4) |
+| `src/chat/` | แชท (P2): `session` (engine ใช้ร่วม), `line` (LINE OA webhook), `ws` (web widget) |
+| `src/outbound/` | โทรออก (P5): `ami` (AMI client), `campaign` (batch dialer) |
+| `console/` | Console (P3): Next.js — dashboard, calls, agents, knowledge, tickets, campaigns, settings |
+| `docs/voice-quality.md` | P7: แนวทางยกระดับคุณภาพเสียง (ซื้อ vs สร้าง) |
 
 ## บริบทธุรกิจ (Profile)
 ตัว agent ไม่ผูกกับธุรกิจใดธุรกิจหนึ่ง เลือกบริบทด้วย env `AGENT_PROFILE`:
@@ -70,6 +74,7 @@ npm run typecheck      # ตรวจ type
 
 - bridge ฟังเฉพาะ `127.0.0.1` เป็นค่าเริ่มต้น (Asterisk อยู่เครื่องเดียวกัน, Twilio เข้าผ่าน reverse proxy) เปลี่ยนได้ด้วย `BIND_HOST`
 - env ที่ใช้: `GEMINI_API_KEY`, `GEMINI_MODEL`, `VOICE`, `AGENT_PROFILE`, `BUSINESS_NAME`, `PORT`, `AUDIOSOCKET_PORT`, `LOG_DIR`, `PUBLIC_HOST`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `OFFICER_TRANSFER_NUMBER`, `EMERGENCY_TRANSFER_NUMBER`, `ASTERISK_BIND_IP`, `SIP_PASSWORD_1001/2001/2002`, `RECORD_CALLS`, `DEBUG_AUDIO` (คำอธิบายอยู่ใน `.env.example`)
+- env ที่เพิ่มในเฟสถัดไป: `DATABASE_URL`, `POSTGRES_*`, `API_PORT`, `TENANT_SLUG`, `TENANT_NAME`, `AGENT_CACHE_TTL_MS` (P0/P4) · `CHAT_MODEL`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (P2) · `AMI_*`, `OUTBOUND_TRUNK`, `CAMPAIGN_BATCH` (P5) · `SCREENPOP_URL` (P6) · `CONSOLE_PORT` (P3)
 
 ## Postgres + REST API (P0)
 เก็บ `calls` / `turns` / tool calls / `tickets` / latency ลง Postgres และเปิด REST API ให้ console (P3) กับ analytics (P4) ใช้ต่อ
@@ -100,6 +105,37 @@ REST API (พอร์ต `API_PORT`, default 8090):
 | `GET /api/tickets?tenant=` | เรื่องร้องเรียน / ขอติดต่อกลับ |
 | `GET /api/stats/overview?tenant=` | ภาพรวม (จำนวนสาย, latency เฉลี่ย, ticket ค้าง) |
 | `GET /api/stats/heatmap?tenant=` | ช่วงเวลาที่สายเยอะ |
+
+## Console (P3)
+UI สำหรับผู้ดูแล — Next.js (App Router) + CSS ของตัวเอง ไม่ใช้ UI framework
+
+```bash
+cd console && npm install && npm run dev   # http://127.0.0.1:3000
+# ต้องตั้ง API_URL=http://127.0.0.1:8090 (ค่าเริ่มต้น) ให้ชี้ไป bridge
+```
+
+| หน้า | หน้าที่ |
+|---|---|
+| `/` | ภาพรวม: จำนวนสาย, latency เฉลี่ย, heatmap ช่วงเวลายุ่ง, ความต้องการที่พบบ่อย, อารมณ์ผู้ติดต่อ, สายล่าสุด |
+| `/calls`, `/calls/[id]` | รายการสาย + transcript เต็ม, tool calls, latency, สรุป/ความต้องการ/อารมณ์ |
+| `/tickets` | เรื่องร้องเรียนที่ AI เปิดไว้ให้ติดต่อกลับ |
+| `/agents` | แก้ persona / ฐานความรู้ / tools / voice / สถานะ (PATCH แล้วมีผลกับสายใหม่ใน ~1 นาที) |
+| `/knowledge` | อัปโหลดเอกสารเข้า RAG + ทดสอบค้นหา + ลบ |
+| `/campaigns` | สร้างแคมเปญโทรออก, สั่งเริ่ม, ดูผลรายเบอร์ |
+| `/settings` | webhook ไป CRM/ERP (+ ค่า `SCREENPOP_URL` ฝั่ง bridge) |
+
+Console เรียก API ผ่าน **proxy ของตัวเอง** (`app/api/[...path]/route.ts` → `API_URL`)
+จึงไม่ต้องเปิด CORS และ browser ไม่ต้องเข้าถึงพอร์ต 8090 ของ server โดยตรง
+
+## เฟสอื่น ๆ (P1, P2, P4, P5, P6)
+| เฟส | อะไร | จุดเริ่ม |
+|---|---|---|
+| P1 | **RAG** — คลังความรู้ + `search_knowledge` (pgvector) | `src/core/knowledge.ts`, `POST /api/knowledge` |
+| P2 | **Text chat** — LINE OA + web widget ใช้ persona/KB/tools ชุดเดียวกับเสียง | `src/chat/` |
+| P4 | **Analytics** — สรุป/intent/sentiment ต่อสาย (Gemini JSON mode) | `src/core/analytics.ts` |
+| P5 | **โทรออก** — แคมเปญ + batch dialer ผ่าน AMI | `src/outbound/` |
+| P6 | **CRM/ERP** — webhook เซ็น HMAC + screen pop ตอนโอนสาย | `src/core/integrations.ts` |
+| P7 | **คุณภาพเสียง** — แนวทาง noise suppression / backchannel / ASR ไทย | `docs/voice-quality.md` |
 
 ## Deploy (git)
 Production ดึงโค้ดด้วย git จาก `git@github.com:tiekungsos/call-center-aiagent.git` (repo public → server ใช้ HTTPS ได้ ไม่ต้องมี key)
