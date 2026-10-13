@@ -1,0 +1,13 @@
+[general]
+enabled = yes
+webenabled = no
+bindaddr = 127.0.0.1
+port = 5038
+
+; AMI user สำหรับ bridge (ใช้สั่งโทรออก) — จำกัดเฉพาะ localhost
+[aileo]
+secret = ${AMI_PASSWORD}
+deny = 0.0.0.0/0.0.0.0
+permit = 127.0.0.1/255.255.255.255
+read = all
+write = all

@@ -7,9 +7,23 @@ import { analyzeCall } from './core/analytics.js';
 import * as knowledge from './core/knowledge.js';
 import * as store from './core/store.js';
 import { dbEnabled } from './db.js';
+import { outboundReady, runCampaign } from './outbound/campaign.js';
 
 type Q = { tenant?: string; limit?: string; offset?: string };
-type Body = { tenant?: string; agentId?: string; title?: string; content?: string; query?: string; k?: number };
+type Body = {
+  tenant?: string;
+  agentId?: string;
+  title?: string;
+  content?: string;
+  query?: string;
+  k?: number;
+  name?: string;
+  goal?: string;
+  targets?: { phone: string; name?: string; variables?: Record<string, unknown> }[];
+  url?: string;
+  events?: string[];
+  secret?: string;
+};
 
 async function tenantOf(slug?: string) {
   const s = slug?.trim() || process.env.TENANT_SLUG?.trim() || 'aileo';
@@ -95,6 +109,63 @@ export function buildApi() {
 
   app.post<{ Params: { id: string } }>('/api/calls/:id/analyze', async (req) => {
     return { analysis: (await analyzeCall(req.params.id)) ?? null };
+  });
+
+  // --- P5: แคมเปญโทรออก ---
+  app.get<{ Querystring: Q }>('/api/campaigns', async (req) => {
+    const t = await tenantOf(req.query.tenant);
+    return { campaigns: t ? ((await store.listCampaigns(t.id)) ?? []) : [] };
+  });
+
+  app.post<{ Body: Body }>('/api/campaigns', async (req, reply) => {
+    const t = await tenantOf(req.body?.tenant);
+    if (!t) return reply.code(400).send({ error: 'unknown tenant' });
+    const name = req.body?.name?.trim();
+    if (!name) return reply.code(400).send({ error: 'name required' });
+    const campaign = await store.createCampaign({ tenantId: t.id, name, goal: req.body?.goal });
+    if (!campaign) return reply.code(500).send({ error: 'create failed' });
+    const targets = req.body?.targets ?? [];
+    const added = targets.length ? await store.addCampaignTargets(campaign.id, targets) : 0;
+    return { campaign, targets: added };
+  });
+
+  app.get<{ Params: { id: string } }>('/api/campaigns/:id', async (req, reply) => {
+    const campaign = await store.getCampaign(req.params.id);
+    if (!campaign) return reply.code(404).send({ error: 'not found' });
+    const [stats, targets] = await Promise.all([store.campaignStats(campaign.id), store.listCampaignTargets(campaign.id)]);
+    return { campaign, stats, targets: targets ?? [] };
+  });
+
+  app.post<{ Params: { id: string } }>('/api/campaigns/:id/start', async (req, reply) => {
+    const campaign = await store.getCampaign(req.params.id);
+    if (!campaign) return reply.code(404).send({ error: 'not found' });
+    if (!outboundReady()) return reply.code(400).send({ error: 'ตั้ง AMI_PASSWORD และ OUTBOUND_TRUNK ก่อนใช้โทรออก' });
+    await store.setCampaignStatus(campaign.id, 'running');
+    const result = await runCampaign(campaign.id);
+    return { result };
+  });
+
+  app.post<{ Params: { id: string } }>('/api/campaigns/:id/pause', async (req) => {
+    await store.setCampaignStatus(req.params.id, 'paused');
+    return { ok: true };
+  });
+
+  // --- P6: webhooks ไป CRM/ERP ---
+  app.get<{ Querystring: Q }>('/api/webhooks', async (req) => {
+    const t = await tenantOf(req.query.tenant);
+    return { webhooks: t ? ((await store.listWebhooks(t.id)) ?? []) : [] };
+  });
+
+  app.post<{ Body: Body }>('/api/webhooks', async (req, reply) => {
+    const t = await tenantOf(req.body?.tenant);
+    if (!t) return reply.code(400).send({ error: 'unknown tenant' });
+    if (!req.body?.url) return reply.code(400).send({ error: 'url required' });
+    return { webhook: await store.addWebhook({ tenantId: t.id, url: req.body.url, events: req.body.events, secret: req.body.secret }) };
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/webhooks/:id', async (req) => {
+    await store.removeWebhook(req.params.id);
+    return { deleted: true };
   });
 
   // --- P1: คลังความรู้ (RAG) ---

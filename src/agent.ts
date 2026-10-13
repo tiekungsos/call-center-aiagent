@@ -12,6 +12,7 @@ import {
 import { bufFromInt16, int16FromBuf, Upsampler8to16 } from './audio.js';
 import { getActiveAgent, type ResolvedAgent } from './core/agentConfig.js';
 import { analyzeCall } from './core/analytics.js';
+import { emitEvent, screenPop } from './core/integrations.js';
 import * as store from './core/store.js';
 import { CallLogger } from './logger.js';
 import { CallAction, runTool } from './tools.js';
@@ -37,6 +38,7 @@ export class CallAgent extends EventEmitter {
   private reconnecting = false;
   private resumeHandle?: string;
   private pendingAction?: CallAction;
+  private lastAction?: CallAction;
   private actionTimer?: NodeJS.Timeout;
   private up = new Upsampler8to16();
   private tx = { caller: '', agent: '' };
@@ -95,6 +97,8 @@ export class CallAgent extends EventEmitter {
     void store.endCall(this.callId, recording);
     // P4: สรุป + intent + sentiment หลังวางสาย (background)
     void analyzeCall(this.callId);
+    // P6: แจ้ง CRM/ERP ว่าสายจบแล้ว
+    void emitEvent(this.cfg?.tenantId, 'call.end', { callId: this.callId, callerNumber: this.callerNumber, action: this.lastAction });
     this.session?.close();
   }
 
@@ -232,9 +236,12 @@ export class CallAgent extends EventEmitter {
     const a = this.pendingAction;
     if (!a) return;
     this.pendingAction = undefined;
+    this.lastAction = a;
     clearTimeout(this.actionTimer);
     this.log.write('action', { action: a });
     void store.setCallAction(this.callId, a);
+    // P6: warm transfer — ส่ง context ให้เจ้าหน้าที่ก่อนรับสาย
+    if (a === 'transfer') void screenPop(this.callId, this.cfg?.tenantId);
     this.emit('action', a);
   }
 

@@ -7,6 +7,13 @@ for v in SIP_PASSWORD_1001 SIP_PASSWORD_2001 SIP_PASSWORD_2002; do
   echo "$p" | grep -Eq '^[A-Za-z0-9]{20,}$' || { echo "$v ต้องเป็น A-Za-z0-9 ยาว >= 20 ตัว" >&2; exit 1; }
 done
 
+# AMI (ให้ bridge สั่งโทรออก) — ถ้าไม่ตั้งจะสุ่มให้ เพื่อไม่ให้เปิด AMI ด้วยรหัสว่าง
+if [ -z "${AMI_PASSWORD:-}" ]; then
+  AMI_PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+  echo "AMI_PASSWORD ไม่ได้ตั้ง -> สุ่มให้ (โทรออกจาก bridge จะใช้ไม่ได้จนกว่าจะตั้ง AMI_PASSWORD ใน .env)"
+fi
+export AMI_PASSWORD
+
 # Linux + host network: bind ตรง IP LAN เท่านั้น
 # Docker Desktop (Mac/Win): IP LAN ไม่อยู่ใน VM -> bind ใน container แล้ว publish port เฉพาะ IP LAN (docker-compose.desktop.yml)
 if hostname -I | tr ' ' '\n' | grep -qx "$ASTERISK_BIND_IP"; then
@@ -26,7 +33,7 @@ export SIP_BIND SIP_EXTERNAL RECORD_CALLS="${RECORD_CALLS:-1}" PORT="${PORT:-808
 rm -rf /etc/asterisk/*
 cp /config/* /etc/asterisk/
 for t in /etc/asterisk/*.tmpl; do
-  envsubst '$SIP_BIND $SIP_EXTERNAL $SIP_PASSWORD_1001 $SIP_PASSWORD_2001 $SIP_PASSWORD_2002 $RECORD_CALLS $PORT $AUDIOSOCKET_PORT' <"$t" >"${t%.tmpl}"
+  envsubst '$SIP_BIND $SIP_EXTERNAL $SIP_PASSWORD_1001 $SIP_PASSWORD_2001 $SIP_PASSWORD_2002 $AMI_PASSWORD $RECORD_CALLS $PORT $AUDIOSOCKET_PORT' <"$t" >"${t%.tmpl}"
   rm "$t"
 done
 chown -R root:asterisk /etc/asterisk && chmod 640 /etc/asterisk/*

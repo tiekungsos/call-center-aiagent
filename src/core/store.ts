@@ -223,3 +223,115 @@ export async function breakdown(tenantId: string) {
 }
 
 export const setCallSummary = (id: string, summary: string) => q(`update calls set summary=$2 where id=$1`, [id, summary]);
+
+// --- P5: campaigns (โทรออก) ---
+export interface CampaignRow {
+  id: string;
+  tenant_id: string;
+  agent_id: string | null;
+  name: string;
+  status: string;
+  goal: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export const createCampaign = async (c: { tenantId: string; agentId?: string; name: string; goal?: string }) =>
+  (
+    await q<CampaignRow>(
+      `insert into campaigns (tenant_id, agent_id, name, goal) values ($1, $2, $3, $4) returning *`,
+      [c.tenantId, c.agentId ?? null, c.name, c.goal ?? null],
+    )
+  )?.[0];
+
+export const listCampaigns = (tenantId: string) =>
+  q<CampaignRow>(`select * from campaigns where tenant_id=$1 order by created_at desc limit 100`, [tenantId]);
+
+export const getCampaign = async (id: string) => (await q<CampaignRow>(`select * from campaigns where id=$1`, [id]))?.[0];
+
+export const setCampaignStatus = (id: string, status: string) =>
+  q(
+    `update campaigns set status=$2,
+       started_at = case when $2='running' and started_at is null then now() else started_at end,
+       finished_at = case when $2='done' then now() else finished_at end
+     where id=$1`,
+    [id, status],
+  );
+
+export async function addCampaignTargets(
+  campaignId: string,
+  targets: { phone: string; name?: string; variables?: Record<string, unknown> }[],
+): Promise<number> {
+  let n = 0;
+  for (const t of targets) {
+    const r = await q(`insert into campaign_targets (campaign_id, phone, name, variables) values ($1, $2, $3, $4) returning id`, [
+      campaignId,
+      t.phone,
+      t.name ?? null,
+      JSON.stringify(t.variables ?? {}),
+    ]);
+    if (r) n++;
+  }
+  return n;
+}
+
+export const pendingTargets = (campaignId: string, limit: number) =>
+  q<{ id: string; phone: string; name: string | null; variables: Record<string, unknown>; attempts: number }>(
+    `select id, phone, name, variables, attempts from campaign_targets
+     where campaign_id=$1 and status='pending' order by id limit $2`,
+    [campaignId, limit],
+  );
+
+export const markTargetDialing = (id: string) =>
+  q(`update campaign_targets set status='dialing', attempts=attempts+1, updated_at=now() where id=$1`, [id]);
+export const markTargetDone = (id: string, outcome: string) =>
+  q(`update campaign_targets set status='done', outcome=$2, updated_at=now() where id=$1`, [id, outcome]);
+export const markTargetFailed = (id: string, outcome: string) =>
+  q(`update campaign_targets set status='failed', outcome=$2, updated_at=now() where id=$1`, [id, outcome]);
+
+export const campaignStats = async (campaignId: string) =>
+  (
+    await q(
+      `select count(*)::int as total,
+              count(*) filter (where status='pending')::int as pending,
+              count(*) filter (where status='dialing')::int as dialing,
+              count(*) filter (where status='done')::int as done,
+              count(*) filter (where status='failed')::int as failed
+       from campaign_targets where campaign_id=$1`,
+      [campaignId],
+    )
+  )?.[0];
+
+export const listCampaignTargets = (campaignId: string, limit = 200) =>
+  q(
+    `select id, phone, name, status, outcome, attempts, updated_at from campaign_targets
+     where campaign_id=$1 order by id limit $2`,
+    [campaignId, limit],
+  );
+
+// --- P6: webhooks ---
+export const listWebhooks = (tenantId: string) =>
+  q<{ id: string; url: string; events: string[]; enabled: boolean }>(
+    `select id, url, events, enabled from webhooks where tenant_id=$1 order by created_at`,
+    [tenantId],
+  );
+
+export const addWebhook = async (w: { tenantId: string; url: string; events?: string[]; secret?: string }) =>
+  (
+    await q(`insert into webhooks (tenant_id, url, events, secret) values ($1, $2, $3, $4) returning id, url, events, enabled`, [
+      w.tenantId,
+      w.url,
+      w.events ?? ['call.end'],
+      w.secret ?? null,
+    ])
+  )?.[0];
+
+export const removeWebhook = (id: string) => q(`delete from webhooks where id=$1`, [id]);
+
+/** webhook ที่ต้องยิงจริง (คืน secret ด้วย — ใช้ภายในเท่านั้น อย่าส่งออก API) */
+export const activeWebhooks = (tenantId: string, event: string) =>
+  q<{ id: string; url: string; secret: string | null }>(
+    `select id, url, secret from webhooks where tenant_id=$1 and enabled and $2 = any(events)`,
+    [tenantId, event],
+  );
