@@ -23,7 +23,8 @@ services:
   # Postgres สำหรับ calls/turns/tickets/analytics (P0) — bridge (host network) ต่อผ่าน 127.0.0.1
   # ถ้าไม่ตั้ง DATABASE_URL ใน .env ฝั่ง bridge จะข้าม DB ไปใช้โปรไฟล์ในโค้ด + log JSONL
   postgres:
-    image: postgres:16-alpine
+    # ต้องมี pgvector สำหรับ RAG (P1) — image นี้ base เป็น postgres 16
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-aileo}
       # default นี้เป็น placeholder สำหรับ dev เท่านั้น — production ต้องตั้ง POSTGRES_PASSWORD ใน .env

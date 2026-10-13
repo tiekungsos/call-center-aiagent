@@ -1,6 +1,8 @@
--- AILEO Call Center — P0 schema (multi-tenant ready)
+-- AILEO Call Center — schema (multi-tenant ready)
 -- รันซ้ำได้ (idempotent): migrate() จะ execute ไฟล์นี้ทุกครั้งที่ boot
+-- ต้องใช้ image ที่มี pgvector (ดู docker-compose.yml: pgvector/pgvector:pg16)
 create extension if not exists pgcrypto;
+create extension if not exists vector;
 
 -- ลูกค้า/องค์กร (tenant)
 create table if not exists tenants (
@@ -105,14 +107,58 @@ create table if not exists contacts (
   unique (tenant_id, phone)
 );
 
--- คลังความรู้ (เตรียมไว้สำหรับ P1: RAG) — ตอนนี้ใช้ persona/knowledge_base ในตาราง agents ก่อน
+-- คลังความรู้ (P1: RAG) — chunk + embedding 768 มิติ (Gemini text-embedding-004)
 create table if not exists knowledge_documents (
   id         uuid primary key default gen_random_uuid(),
   tenant_id  uuid not null references tenants(id) on delete cascade,
   agent_id   uuid references agents(id) on delete cascade,
   title      text,
   content    text not null,
+  embedding  vector(768),
   metadata   jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
+-- สำหรับ DB ที่สร้างไว้ก่อนมี RAG
+alter table knowledge_documents add column if not exists embedding vector(768);
 create index if not exists knowledge_tenant_idx on knowledge_documents (tenant_id);
+create index if not exists knowledge_embedding_idx on knowledge_documents
+  using hnsw (embedding vector_cosine_ops);
+
+-- P5: แคมเปญโทรออก
+create table if not exists campaigns (
+  id            uuid primary key default gen_random_uuid(),
+  tenant_id     uuid not null references tenants(id) on delete cascade,
+  agent_id      uuid references agents(id) on delete set null,
+  name          text not null,
+  status        text not null default 'draft',   -- draft | running | paused | done
+  goal          text,
+  created_at    timestamptz not null default now(),
+  started_at    timestamptz,
+  finished_at   timestamptz
+);
+
+create table if not exists campaign_targets (
+  id           uuid primary key default gen_random_uuid(),
+  campaign_id  uuid not null references campaigns(id) on delete cascade,
+  phone        text not null,
+  name         text,
+  variables    jsonb not null default '{}'::jsonb,
+  status       text not null default 'pending',  -- pending | dialing | done | failed | skipped
+  outcome      text,
+  call_id      text references calls(id) on delete set null,
+  attempts     int not null default 0,
+  updated_at   timestamptz not null default now()
+);
+create index if not exists campaign_targets_campaign_idx on campaign_targets (campaign_id, status);
+
+-- P6: webhook ขาออกไป CRM/ERP (แจ้ง event ต่อ tenant)
+create table if not exists webhooks (
+  id         uuid primary key default gen_random_uuid(),
+  tenant_id  uuid not null references tenants(id) on delete cascade,
+  url        text not null,
+  events     text[] not null default '{call.end}',
+  secret     text,
+  enabled    boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index if not exists webhooks_tenant_idx on webhooks (tenant_id);

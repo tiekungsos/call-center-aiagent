@@ -1,4 +1,5 @@
 import { Behavior, FunctionDeclaration, FunctionResponseScheduling, Type } from '@google/genai';
+import * as knowledge from './core/knowledge.js';
 import type { CallLogger } from './logger.js';
 import type { BusinessProfile } from './profiles/types.js';
 
@@ -7,6 +8,8 @@ export type CallAction = 'transfer' | 'emergency' | 'hangup';
 export interface ToolContext {
   callId: string;
   callerNumber?: string;
+  tenantId?: string;
+  agentId?: string;
   log: CallLogger;
 }
 
@@ -55,8 +58,22 @@ const end_call: FunctionDeclaration = {
   parameters: { type: Type.OBJECT, properties: {} },
 };
 
+/** ค้นคลังความรู้เพิ่มเติม (RAG) — ใช้เมื่อคำตอบไม่อยู่ในข้อมูลที่ให้มา */
+const search_knowledge: FunctionDeclaration = {
+  name: 'search_knowledge',
+  description: 'ค้นฐานความรู้/เอกสารที่อัปโหลดไว้ ใช้เมื่อไม่แน่ใจว่ามีข้อมูลหรือไม่ หรือต้องการรายละเอียดเพิ่ม',
+  behavior: Behavior.BLOCKING,
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      query: { type: Type.STRING, description: 'คำค้นหรือคำถามของผู้โทร' },
+    },
+    required: ['query'],
+  },
+};
+
 /** เครื่องมือที่ทุกธุรกิจมีเหมือนกัน */
-export const CORE_TOOLS: FunctionDeclaration[] = [transfer_to_agent, create_ticket, end_call];
+export const CORE_TOOLS: FunctionDeclaration[] = [transfer_to_agent, create_ticket, end_call, search_knowledge];
 
 /** เหตุด่วน — ใช้กับธุรกิจที่มีเส้นตายเรื่องความปลอดภัย (ตำรวจ, โรงพยาบาล) */
 export const report_emergency: FunctionDeclaration = {
@@ -204,6 +221,22 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
         },
         scheduling: FunctionResponseScheduling.WHEN_IDLE,
       };
+
+    case 'search_knowledge': {
+      const query = String(args.query ?? '');
+      const hits = ctx.tenantId ? await knowledge.search(ctx.tenantId, query, 4) : [];
+      return {
+        response: hits.length
+          ? {
+              results: hits.map((h) => ({ title: h.title, text: h.content, score: Number(h.score.toFixed(3)) })),
+              instruction: 'ตอบจากผลค้นหานี้เท่านั้น ถ้าไม่ตรงกับคำถามให้บอกว่าไม่มีข้อมูล',
+            }
+          : {
+              results: [],
+              instruction: 'ไม่พบข้อมูลในฐานความรู้ ให้บอกผู้โทรว่าไม่มีข้อมูล และเสนอโอนสายหรือเปิดเรื่องให้เจ้าหน้าที่ติดต่อกลับ',
+            },
+      };
+    }
 
     case 'end_call':
       return { response: { status: 'ok' }, action: 'hangup' };

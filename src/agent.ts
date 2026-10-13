@@ -191,6 +191,8 @@ export class CallAgent extends EventEmitter {
       const res = await runTool(fc.name ?? '', (fc.args ?? {}) as Record<string, unknown>, {
         callId: this.callId,
         callerNumber: this.callerNumber,
+        tenantId: this.cfg?.tenantId,
+        agentId: this.cfg?.agentId,
         log: this.log,
       });
       this.log.write('tool', { name: fc.name, args: fc.args, result: res.response });
