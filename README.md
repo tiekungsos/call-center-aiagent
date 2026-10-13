@@ -68,6 +68,32 @@ npm run typecheck      # ตรวจ type
 - bridge ฟังเฉพาะ `127.0.0.1` เป็นค่าเริ่มต้น (Asterisk อยู่เครื่องเดียวกัน, Twilio เข้าผ่าน reverse proxy) เปลี่ยนได้ด้วย `BIND_HOST`
 - env ที่ใช้: `GEMINI_API_KEY`, `GEMINI_MODEL`, `VOICE`, `AGENT_PROFILE`, `BUSINESS_NAME`, `PORT`, `AUDIOSOCKET_PORT`, `LOG_DIR`, `PUBLIC_HOST`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `OFFICER_TRANSFER_NUMBER`, `EMERGENCY_TRANSFER_NUMBER`, `ASTERISK_BIND_IP`, `SIP_PASSWORD_1001/2001/2002`, `RECORD_CALLS`, `DEBUG_AUDIO` (คำอธิบายอยู่ใน `.env.example`)
 
+## Deploy (git)
+Production ดึงโค้ดด้วย git จาก `git@github.com:tiekungsos/call-center-aiagent.git` (repo public → server ใช้ HTTPS ได้ ไม่ต้องมี key)
+
+```bash
+# เครื่อง dev: push โค้ด
+git push origin main
+
+# server: ดึง + recreate container ที่เกี่ยวข้อง
+ssh root@72.61.149.136 'cd /opt/aileo-callcenter && ./scripts/deploy.sh'
+```
+
+`scripts/deploy.sh` จะ `git pull --ff-only` แล้ว
+- `docker/` เปลี่ยน → `docker compose up -d --build asterisk` (ตัดสายที่คุยอยู่ชั่วคราว)
+- `package.json` เปลี่ยน → `--force-recreate bridge` (รัน `npm install` ใหม่)
+- นอกนั้น → `up -d bridge` (โค้ดใน `src/` ถูก mount แบบ live ผ่าน tsx watch จึงมีผลทันที)
+
+ครั้งแรกที่ server (แปลงโฟลเดอร์เดิมเป็น git checkout โดยไม่แตะ `.env`, `logs/`, `recordings/`):
+```bash
+cd /opt/aileo-callcenter
+git init -b main
+git remote add origin https://github.com/tiekungsos/call-center-aiagent.git
+git fetch origin && git checkout -f -B main origin/main
+git branch --set-upstream-to=origin/main main
+```
+`.env`, `logs/`, `recordings/`, `node_modules/` อยู่ใน `.gitignore` จึงไม่ถูกเขียนทับ
+
 ## ทางเลือก A: Twilio (PoC)
 1. ตั้ง Voice webhook ของเบอร์เป็น `POST https://PUBLIC_HOST/twilio/voice` (ตอบ TwiML `<Connect><Stream url="wss://PUBLIC_HOST/twilio">`)
 2. reverse proxy (Caddy/nginx) ให้ `wss://PUBLIC_HOST/twilio` → `:8080`
