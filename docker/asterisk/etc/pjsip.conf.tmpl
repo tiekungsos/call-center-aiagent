@@ -1,0 +1,79 @@
+[transport-udp]
+type=transport
+protocol=udp
+bind=${SIP_BIND}:5060
+${SIP_EXTERNAL}
+
+[ep](!)
+type=endpoint
+context=internal
+disallow=all
+allow=ulaw,alaw,opus
+direct_media=no
+rtp_symmetric=yes
+force_rport=yes
+rewrite_contact=yes
+dtmf_mode=rfc4733
+transport=transport-udp
+
+[aor](!)
+type=aor
+max_contacts=1
+remove_existing=yes
+qualify_frequency=30
+
+[auth](!)
+type=auth
+auth_type=userpass
+
+; 1001 = ประชาชนจำลอง
+[1001](ep)
+auth=1001
+aors=1001
+callerid="Citizen" <1001>
+[1001](aor)
+; ผู้ทดสอบหลายคนใช้บัญชี 1001 พร้อมกันได้
+max_contacts=20
+remove_existing=no
+[1001](auth)
+username=1001
+password=${SIP_PASSWORD_1001}
+
+; 2001 = เจ้าหน้าที่
+[2001](ep)
+auth=2001
+aors=2001
+callerid="Officer" <2001>
+[2001](aor)
+[2001](auth)
+username=2001
+password=${SIP_PASSWORD_2001}
+
+; 2002 = โต๊ะเหตุด่วน
+[2002](ep)
+auth=2002
+aors=2002
+callerid="Emergency Desk" <2002>
+[2002](aor)
+[2002](auth)
+username=2002
+password=${SIP_PASSWORD_2002}
+
+
+; DIDWW inbound static SIP trunk
+[didww-in](ep)
+context=from-didww
+allow=alaw,ulaw
+
+; Static endpoint is authenticated by DIDWW signaling source IP via identify.
+
+[didww-in-identify]
+type=identify
+endpoint=didww-in
+match=46.19.209.14
+match=46.19.210.14
+match=46.19.212.14
+match=46.19.213.14
+match=46.19.214.14
+match=46.19.215.14
+match=185.238.173.14

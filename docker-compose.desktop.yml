@@ -1,0 +1,17 @@
+# Docker Desktop (Mac/Windows) ไม่มี host network จริง:
+# service `net` ถือ network namespace + publish port เฉพาะ IP LAN, asterisk/bridge เข้า netns เดียวกัน
+# -> 127.0.0.1:9093 / :8080 ใน dialplan ยังใช้ได้ และ restart asterisk/bridge แยกกันได้
+services:
+  net:
+    image: busybox:stable
+    command: sleep 2147483647
+    ports:
+      - "${ASTERISK_BIND_IP}:5060:5060/udp"
+      - "${ASTERISK_BIND_IP}:10000-10100:10000-10100/udp"
+    restart: unless-stopped
+  asterisk:
+    network_mode: service:net
+    environment:
+      DOCKER_DESKTOP: "1"
+  bridge:
+    network_mode: service:net

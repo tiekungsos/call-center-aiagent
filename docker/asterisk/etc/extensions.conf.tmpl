@@ -1,0 +1,45 @@
+[globals]
+RECORD_CALLS=${RECORD_CALLS}
+; EMERGENCY_TRUNK=PJSIP/191@trunk-provider   ; ใส่เมื่อมี trunk จริง
+
+[internal]
+exten => 1599,1,Goto(police-ai,s,1)
+
+exten => 600,1,Answer()
+ same => n,Playback(demo-echotest)
+ same => n,Echo()
+ same => n,Hangup()
+
+exten => 601,1,Answer()
+ same => n,Playback(demo-congrats)
+ same => n,Playtones(1004/1000,0/500)
+ same => n,Wait(5)
+ same => n,Hangup()
+
+exten => _200[12],1,Dial(PJSIP/${EXTEN},30)
+ same => n,Hangup()
+
+[police-ai]
+exten => s,1,Answer()
+ same => n,Set(CALLID=${SHELL(tr -d '\n' < /proc/sys/kernel/random/uuid)})
+ same => n,ExecIf($["${RECORD_CALLS}" = "1"]?MixMonitor(/recordings/${CALLID}.wav))
+ same => n,Set(CURLOPT(conntimeout)=2)
+ same => n,Set(CURLOPT(httptimeout)=3)
+ ; bridge ล่ม -> AudioSocket() คืน -1 แล้ววางสายทันที จึงเช็ค health ก่อน และครอบด้วย TryExec
+ same => n,GotoIf($["${CURL(http://127.0.0.1:${PORT}/health)}" != "ok"]?officer)
+ same => n,TryExec(AudioSocket(${CALLID},127.0.0.1:${AUDIOSOCKET_PORT}))
+ same => n,Set(NEXT=${CURL(http://127.0.0.1:${PORT}/next/${CALLID})})
+ same => n,Verbose(1,police-ai ${CALLID} NEXT=[${NEXT}] TRYSTATUS=${TRYSTATUS})
+ same => n,GotoIf($["${NEXT}" = "emergency"]?emergency)
+ same => n,GotoIf($["${NEXT}" = "hangup"]?bye)
+ ; transfer / ว่าง / CURL fail -> เจ้าหน้าที่ (fail-safe)
+ same => n,Goto(officer)
+ same => n(emergency),Queue(emergency-desk,tr,,,30)
+ same => n,ExecIf($[${LEN(${EMERGENCY_TRUNK})} > 0]?Dial(${EMERGENCY_TRUNK}))
+ same => n(officer),Queue(officer-desk,tr)
+ same => n(bye),Hangup()
+
+[from-didww]
+; DIDWW sends the called number as E.164 in the Request-URI.
+; Route inbound DID calls into the existing AI call flow.
+exten => _.,1,Goto(police-ai,s,1)
