@@ -3,3 +3,4 @@ dist/
 .env
 logs/
 recordings/
+.DS_Store

@@ -2,12 +2,16 @@ import 'dotenv/config';
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
 import { startAudioSocketServer, takeNextAction } from './audiosocket.js';
+import { getActiveProfile } from './profiles/index.js';
 import { handleTwilio } from './twilio.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 // ฟังเฉพาะ localhost: Asterisk อยู่เครื่องเดียวกัน, Twilio ให้ผ่าน reverse proxy
 const HOST = process.env.BIND_HOST ?? '127.0.0.1';
 const LOCAL = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+
+const profile = getActiveProfile();
+console.log(`[profile] ${profile.id} (${profile.label})`);
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
