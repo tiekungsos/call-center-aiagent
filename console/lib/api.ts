@@ -5,9 +5,14 @@ export const SERVER_API = process.env.API_URL ?? 'http://127.0.0.1:8090';
 export const CLIENT_API = '';
 export const TENANT = process.env.NEXT_PUBLIC_TENANT ?? 'aileo';
 
+/** header ยืนยันตัวตนกับ bridge (ถ้าตั้ง API_TOKEN) — ใช้ฝั่ง server เท่านั้น ไม่รั่วไป browser */
+export const SERVER_AUTH: Record<string, string> = process.env.API_TOKEN?.trim()
+  ? { 'x-api-key': process.env.API_TOKEN.trim() }
+  : {};
+
 export async function apiGet<T>(path: string): Promise<T | null> {
   try {
-    const r = await fetch(`${SERVER_API}${path}`, { cache: 'no-store' });
+    const r = await fetch(`${SERVER_API}${path}`, { cache: 'no-store', headers: SERVER_AUTH });
     if (!r.ok) return null;
     return (await r.json()) as T;
   } catch {

@@ -49,12 +49,27 @@ export default function CampaignsPage() {
     void load();
   }, [load]);
 
-  const inspect = async (id: string) => {
+  const inspect = useCallback(async (id: string) => {
     setSelected(id);
-    const r = await fetch(`${CLIENT_API}/api/campaigns/${id}`, { cache: 'no-store' });
-    const d = (await r.json()) as { stats: Stats; targets: Target[] };
-    setOpen({ stats: d.stats, targets: d.targets ?? [] });
-  };
+    try {
+      const r = await fetch(`${CLIENT_API}/api/campaigns/${id}`, { cache: 'no-store' });
+      const d = (await r.json()) as { stats: Stats; targets: Target[] };
+      setOpen({ stats: d.stats, targets: d.targets ?? [] });
+    } catch {
+      setNotice('โหลดผลแคมเปญไม่สำเร็จ');
+    }
+  }, []);
+
+  // แคมเปญที่กำลังเดินอยู่เบื้องหลัง -> ดึงสถานะใหม่เป็นระยะ
+  const selectedRunning = campaigns.find((c) => c.id === selected)?.status === 'running';
+  useEffect(() => {
+    if (!selected || !selectedRunning) return;
+    const t = setInterval(() => {
+      void load();
+      void inspect(selected);
+    }, 3000);
+    return () => clearInterval(t);
+  }, [selected, selectedRunning, load, inspect]);
 
   const create = async () => {
     const targets = phones
@@ -88,8 +103,8 @@ export default function CampaignsPage() {
     setBusy(true);
     setNotice(null);
     try {
-      const r = await apiSend<{ result: { dialed: number; failed: number } }>(`/api/campaigns/${id}/start`, 'POST');
-      setNotice(`dialed ${r.result.dialed} · failed ${r.result.failed}`);
+      await apiSend<{ started: boolean }>(`/api/campaigns/${id}/start`, 'POST');
+      setNotice('เริ่มแคมเปญแล้ว — ระบบโทรออกเป็นชุดอยู่เบื้องหลัง ตารางผลรายเบอร์จะอัปเดตอัตโนมัติ');
       await load();
       await inspect(id);
     } catch (err) {

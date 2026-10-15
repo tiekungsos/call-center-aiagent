@@ -42,6 +42,8 @@ export class CallAgent extends EventEmitter {
   private actionTimer?: NodeJS.Timeout;
   private up = new Upsampler8to16();
   private tx = { caller: '', agent: '' };
+  // สายออกของแคมเปญ (ถ้ามี) — รู้จาก CALLID = campaign_targets.id ที่ dialplan ส่งมา
+  private campaign?: { targetId: string; campaignId: string; phone: string; campaignName: string; goal: string | null };
   // latency: เสียงผู้โทรจบ / inputTranscription ชิ้นสุดท้าย -> audio chunk แรกของ AI
   private lastVoiceAt = 0;
   private lastCallerTxAt = 0;
@@ -56,18 +58,23 @@ export class CallAgent extends EventEmitter {
   async start() {
     try {
       this.cfg = await getActiveAgent();
-      void store.startCall({
+      // CALLID ของสายออกถูกตั้งเป็น campaign_targets.id ตั้งแต่ใน dialplan -> รู้ว่าเป็นสายออกของแคมเปญไหน
+      const target = await store.getCampaignTarget(this.callId);
+      this.campaign = target
+        ? { targetId: target.id, campaignId: target.campaign_id, phone: target.phone, campaignName: target.campaign_name, goal: target.goal }
+        : undefined;
+      await store.startCall({
         id: this.callId,
         tenantId: this.cfg.tenantId,
         agentId: this.cfg.agentId,
         channel: 'voice',
-        direction: 'inbound',
-        callerNumber: this.callerNumber,
+        direction: this.campaign ? 'outbound' : 'inbound',
+        callerNumber: this.campaign?.phone ?? this.callerNumber,
       });
+      if (this.campaign) await store.linkTargetCall(this.campaign.targetId, this.callId);
       await this.connect();
-      const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
       this.session!.sendClientContent({
-        turns: [{ role: 'user', parts: [{ text: `[ระบบ] มีสายเข้า เวลา ${now} กรุณากล่าวทักทายผู้โทร` }] }],
+        turns: [{ role: 'user', parts: [{ text: this.openingLine() }] }],
         turnComplete: true,
       });
     } catch (err) {
@@ -75,6 +82,15 @@ export class CallAgent extends EventEmitter {
       this.log.write('error', { stage: 'connect', message: String(err) });
       this.emit('action', 'transfer' satisfies CallAction);
     }
+  }
+
+  private openingLine(): string {
+    if (!this.campaign) {
+      const now = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+      return `[ระบบ] มีสายเข้า เวลา ${now} กรุณากล่าวทักทายผู้โทร`;
+    }
+    const goal = this.campaign.goal ? ` เป้าหมาย: ${this.campaign.goal}` : '';
+    return `[ระบบ] สายนี้เป็นสายโทรออกของแคมเปญ "${this.campaign.campaignName}"${goal} ปลายทางคือ ${this.campaign.phone} กรุณาแนะนำตัวสั้น ๆ แจ้งเหตุผลที่โทรมา แล้วถามความสะดวกก่อนดำเนินการต่อ`;
   }
 
   /** รับเสียงจากโทรศัพท์ PCM16 8kHz */
@@ -91,15 +107,29 @@ export class CallAgent extends EventEmitter {
     if (this.closed) return;
     this.closed = true;
     clearTimeout(this.actionTimer);
-    this.flushTranscripts();
     this.log.write('call_end', {});
-    const recording = process.env.RECORD_CALLS === '1' ? `recordings/${this.callId}.wav` : undefined;
-    void store.endCall(this.callId, recording);
-    // P4: สรุป + intent + sentiment หลังวางสาย (background)
-    void analyzeCall(this.callId);
-    // P6: แจ้ง CRM/ERP ว่าสายจบแล้ว
-    void emitEvent(this.cfg?.tenantId, 'call.end', { callId: this.callId, callerNumber: this.callerNumber, action: this.lastAction });
+    // ปิดแบบ background แต่เรียงลำดับให้ transcript ลง DB ก่อนวิเคราะห์/แจ้ง webhook
+    void this.finish();
     this.session?.close();
+  }
+
+  /** ปิดสาย: transcript -> endCall -> ปิด target แคมเปญ -> webhook -> analytics (เรียงลำดับ) */
+  private async finish() {
+    await this.flushTranscripts();
+    const recording = process.env.RECORD_CALLS === '1' ? `recordings/${this.callId}.wav` : undefined;
+    await store.endCall(this.callId, recording);
+    if (this.campaign) {
+      await store.markTargetDone(this.campaign.targetId, this.lastAction ?? 'completed');
+      await store.maybeFinishCampaign(this.campaign.campaignId);
+    }
+    // P6: แจ้ง CRM/ERP ว่าสายจบแล้ว
+    await emitEvent(this.cfg?.tenantId, 'call.end', {
+      callId: this.callId,
+      callerNumber: this.campaign?.phone ?? this.callerNumber,
+      action: this.lastAction,
+    });
+    // P4: สรุป + intent + sentiment หลังวางสาย
+    await analyzeCall(this.callId);
   }
 
   private async connect() {
@@ -180,7 +210,7 @@ export class CallAgent extends EventEmitter {
 
     if (sc?.turnComplete) {
       this.agentSpeaking = false;
-      this.flushTranscripts();
+      void this.flushTranscripts();
       if (this.pendingAction) this.fireAction();
     }
 
@@ -254,16 +284,16 @@ export class CallAgent extends EventEmitter {
     void store.addMetric(this.callId, fromTranscriptMs, fromSpeechEndMs);
   }
 
-  private flushTranscripts() {
+  private async flushTranscripts() {
     if (this.tx.caller.trim()) {
       const text = this.tx.caller.trim();
       this.log.write('transcript', { role: 'caller', text });
-      void store.addTurn(this.callId, 'caller', text);
+      await store.addTurn(this.callId, 'caller', text);
     }
     if (this.tx.agent.trim()) {
       const text = this.tx.agent.trim();
       this.log.write('transcript', { role: 'agent', text });
-      void store.addTurn(this.callId, 'agent', text);
+      await store.addTurn(this.callId, 'agent', text);
     }
     this.tx = { caller: '', agent: '' };
   }

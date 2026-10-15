@@ -203,7 +203,10 @@ export async function overview(tenantId: string) {
 
 export const heatmap = (tenantId: string) =>
   q(
-    `select extract(dow from started_at)::int as dow, extract(hour from started_at)::int as hour, count(*)::int as calls
+    // started_at เป็น timestamptz -> แปลงเป็นเวลาไทยก่อน extract ไม่งั้นชั่วโมงจะเพี้ยน 7 ชม. (DB รัน UTC)
+    `select extract(dow from started_at at time zone 'Asia/Bangkok')::int as dow,
+            extract(hour from started_at at time zone 'Asia/Bangkok')::int as hour,
+            count(*)::int as calls
      from calls where tenant_id=$1 group by 1, 2 order by 1, 2`,
     [tenantId],
   );
@@ -250,6 +253,27 @@ export const listCampaigns = (tenantId: string) =>
 
 export const getCampaign = async (id: string) => (await q<CampaignRow>(`select * from campaigns where id=$1`, [id]))?.[0];
 
+/** target + ข้อมูลแคมเปญ (ใช้ตอนสายออกเชื่อมเข้ามา เพื่อรู้ว่าสายนี้เป็นสายออกของแคมเปญไหน) */
+export interface CampaignTargetRow {
+  id: string;
+  campaign_id: string;
+  phone: string;
+  name: string | null;
+  variables: Record<string, unknown>;
+  campaign_name: string;
+  goal: string | null;
+}
+
+export const getCampaignTarget = async (id: string) =>
+  (
+    await q<CampaignTargetRow>(
+      `select t.id, t.campaign_id, t.phone, t.name, t.variables, c.name as campaign_name, c.goal
+       from campaign_targets t join campaigns c on c.id = t.campaign_id
+       where t.id=$1`,
+      [id],
+    )
+  )?.[0];
+
 export const setCampaignStatus = (id: string, status: string) =>
   q(
     `update campaigns set status=$2,
@@ -289,6 +313,26 @@ export const markTargetDone = (id: string, outcome: string) =>
   q(`update campaign_targets set status='done', outcome=$2, updated_at=now() where id=$1`, [id, outcome]);
 export const markTargetFailed = (id: string, outcome: string) =>
   q(`update campaign_targets set status='failed', outcome=$2, updated_at=now() where id=$1`, [id, outcome]);
+/** ผูก call_id ของสายออกเข้ากับ target (ตอน bridge เริ่มสนทนาจริง) */
+export const linkTargetCall = (id: string, callId: string) =>
+  q(`update campaign_targets set call_id=$2, updated_at=now() where id=$1`, [id, callId]);
+/** ปิด target ที่ dial แล้วแต่ไม่มีใครรับ (call_id ยังว่าง) นานเกิน timeout */
+export const failStaleDialing = (campaignId: string, olderThanSec: number) =>
+  q(
+    `update campaign_targets set status='failed', outcome='ไม่รับสาย (timeout)', updated_at=now()
+     where campaign_id=$1 and status='dialing' and call_id is null
+       and updated_at < now() - make_interval(secs => $2::double precision)`,
+    [campaignId, olderThanSec],
+  );
+/** ปิด target ที่สายเชื่อมแล้วแต่ agent ไม่ได้ปิดผล (process ตายกลางสาย) — ไม่งั้นค้าง dialing ตลอด */
+export const failOrphanedDialing = (campaignId: string, stuckSec: number) =>
+  q(
+    `update campaign_targets t set status='failed', outcome='ไม่ทราบผล (ปิดผลไม่สำเร็จ)', updated_at=now()
+     from calls c
+     where t.call_id = c.id and t.campaign_id=$1 and t.status='dialing'
+       and (c.ended_at is not null or t.updated_at < now() - make_interval(secs => $2::double precision))`,
+    [campaignId, stuckSec],
+  );
 
 export const campaignStats = async (campaignId: string) =>
   (
@@ -309,6 +353,14 @@ export const listCampaignTargets = (campaignId: string, limit = 200) =>
      where campaign_id=$1 order by id limit $2`,
     [campaignId, limit],
   );
+
+/** ปิดแคมเปญเป็น done เมื่อไม่มี target ค้าง pending/dialing แล้ว */
+export async function maybeFinishCampaign(campaignId: string): Promise<void> {
+  const stats = (await campaignStats(campaignId)) as { pending?: number; dialing?: number } | undefined;
+  if (stats && Number(stats.pending ?? 0) === 0 && Number(stats.dialing ?? 0) === 0) {
+    await setCampaignStatus(campaignId, 'done');
+  }
+}
 
 // --- P6: webhooks ---
 export const listWebhooks = (tenantId: string) =>

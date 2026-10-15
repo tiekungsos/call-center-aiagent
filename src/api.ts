@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import Fastify from 'fastify';
 import { WebSocketServer } from 'ws';
 import { handleLineWebhook, verifyLineSignature } from './chat/line.js';
@@ -7,7 +8,7 @@ import { analyzeCall } from './core/analytics.js';
 import * as knowledge from './core/knowledge.js';
 import * as store from './core/store.js';
 import { dbEnabled } from './db.js';
-import { outboundReady, runCampaign } from './outbound/campaign.js';
+import { outboundReady, startCampaign } from './outbound/campaign.js';
 
 type Q = { tenant?: string; limit?: string; offset?: string };
 type Body = {
@@ -44,12 +45,22 @@ export function buildApi() {
     }
   });
 
-  // เปิด CORS ให้ console (Next.js) เรียกได้ระหว่าง dev
-  app.addHook('onSend', async (_req, reply, payload) => {
-    reply.header('access-control-allow-origin', '*');
-    return payload;
+  // ไม่เปิด CORS: console เรียกผ่าน proxy ฝั่ง server ของตัวเอง (app/api/[...path])
+  // การเปิด access-control-allow-origin: * บน API ที่ไม่มี auth ทำให้เว็บใดก็ได้
+  // อ่านข้อมูลสาย (PII) จากเบราว์เซอร์ของผู้ดูแลผ่าน 127.0.0.1 ได้
+  //
+  // ถ้าตั้ง API_TOKEN จะบังคับส่ง header x-api-key ทุกเส้นทาง /api/* (console proxy แนบให้)
+  const apiToken = process.env.API_TOKEN?.trim();
+  const apiTokenBuf = apiToken ? Buffer.from(apiToken) : undefined;
+  app.addHook('onRequest', async (req, reply) => {
+    if (!apiTokenBuf || !req.url.startsWith('/api/')) return;
+    const raw = req.headers['x-api-key'];
+    const given = Array.isArray(raw) ? raw[0] : raw;
+    // เทียบ byte length ก่อน (กัน timingSafeEqual throw) แล้วค่อยเทียบแบบ constant-time
+    const givenBuf = typeof given === 'string' ? Buffer.from(given) : undefined;
+    const ok = givenBuf !== undefined && givenBuf.length === apiTokenBuf.length && crypto.timingSafeEqual(givenBuf, apiTokenBuf);
+    if (!ok) return reply.code(401).send({ error: 'unauthorized' });
   });
-  app.options('/*', async (_req, reply) => reply.code(204).send());
 
   app.get('/health', async () => ({ ok: true, db: dbEnabled() }));
 
@@ -141,8 +152,9 @@ export function buildApi() {
     if (!campaign) return reply.code(404).send({ error: 'not found' });
     if (!outboundReady()) return reply.code(400).send({ error: 'ตั้ง AMI_PASSWORD และ OUTBOUND_TRUNK ก่อนใช้โทรออก' });
     await store.setCampaignStatus(campaign.id, 'running');
-    const result = await runCampaign(campaign.id);
-    return { result };
+    // เดินแคมเปญแบบ background (dial ทีละ batch จนหมดหรือถูก pause) — ไม่บล็อก HTTP request
+    void startCampaign(campaign.id).catch((err) => console.error('[campaign]', (err as Error).message));
+    return { started: true };
   });
 
   app.post<{ Params: { id: string } }>('/api/campaigns/:id/pause', async (req) => {

@@ -50,6 +50,8 @@ services:
     command: sh -c "npm install --no-audit --no-fund && npm run build && npx next start -p $${CONSOLE_PORT:-3000}"
     environment:
       API_URL: http://127.0.0.1:${API_PORT:-8090}
+      # แนบให้ bridge ฝั่ง server (ถ้าตั้ง API_TOKEN) — browser ไม่เคยเห็น token
+      API_TOKEN: ${API_TOKEN:-}
       CONSOLE_PORT: ${CONSOLE_PORT:-3000}
       NEXT_PUBLIC_TENANT: ${TENANT_SLUG:-aileo}
     volumes:

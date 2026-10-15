@@ -22,6 +22,8 @@ exten => _200[12],1,Dial(PJSIP/${EXTEN},30)
 [police-ai]
 exten => s,1,Answer()
  same => n,Set(CALLID=${SHELL(tr -d '\n' < /proc/sys/kernel/random/uuid)})
+; สายโทรออกของแคมเปญ: AMI ส่ง CAMPAIGN_TARGET มา -> ใช้ target id เป็น CALLID ให้ bridge รู้ว่าเป็นสายออก
+ same => n,ExecIf($["${CAMPAIGN_TARGET}" != ""]?Set(CALLID=${CAMPAIGN_TARGET}))
  same => n,ExecIf($["${RECORD_CALLS}" = "1"]?MixMonitor(/recordings/${CALLID}.wav))
  same => n,Set(CURLOPT(conntimeout)=2)
  same => n,Set(CURLOPT(httptimeout)=3)
@@ -30,6 +32,8 @@ exten => s,1,Answer()
  same => n,TryExec(AudioSocket(${CALLID},127.0.0.1:${AUDIOSOCKET_PORT}))
  same => n,Set(NEXT=${CURL(http://127.0.0.1:${PORT}/next/${CALLID})})
  same => n,Verbose(1,police-ai ${CALLID} NEXT=[${NEXT}] TRYSTATUS=${TRYSTATUS})
+ ; สายออกของแคมเปญ: คุยจบแล้ววางสายเสมอ ห้ามโอนปลายทางเข้าคิวเจ้าหน้าที่ของเรา
+ same => n,GotoIf($["${CAMPAIGN_TARGET}" != ""]?bye)
  same => n,GotoIf($["${NEXT}" = "emergency"]?emergency)
  same => n,GotoIf($["${NEXT}" = "hangup"]?bye)
  ; transfer / ว่าง / CURL fail -> เจ้าหน้าที่ (fail-safe)

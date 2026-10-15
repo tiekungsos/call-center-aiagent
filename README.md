@@ -74,7 +74,7 @@ npm run typecheck      # ตรวจ type
 
 - bridge ฟังเฉพาะ `127.0.0.1` เป็นค่าเริ่มต้น (Asterisk อยู่เครื่องเดียวกัน, Twilio เข้าผ่าน reverse proxy) เปลี่ยนได้ด้วย `BIND_HOST`
 - env ที่ใช้: `GEMINI_API_KEY`, `GEMINI_MODEL`, `VOICE`, `AGENT_PROFILE`, `BUSINESS_NAME`, `PORT`, `AUDIOSOCKET_PORT`, `LOG_DIR`, `PUBLIC_HOST`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `OFFICER_TRANSFER_NUMBER`, `EMERGENCY_TRANSFER_NUMBER`, `ASTERISK_BIND_IP`, `SIP_PASSWORD_1001/2001/2002`, `RECORD_CALLS`, `DEBUG_AUDIO` (คำอธิบายอยู่ใน `.env.example`)
-- env ที่เพิ่มในเฟสถัดไป: `DATABASE_URL`, `POSTGRES_*`, `API_PORT`, `TENANT_SLUG`, `TENANT_NAME`, `AGENT_CACHE_TTL_MS` (P0/P4) · `CHAT_MODEL`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (P2) · `AMI_*`, `OUTBOUND_TRUNK`, `CAMPAIGN_BATCH` (P5) · `SCREENPOP_URL` (P6) · `CONSOLE_PORT` (P3)
+- env ที่เพิ่มในเฟสถัดไป: `DATABASE_URL`, `POSTGRES_*`, `API_PORT`, `API_TOKEN`, `TENANT_SLUG`, `TENANT_NAME`, `AGENT_CACHE_TTL_MS` (P0/P4) · `CHAT_MODEL`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (P2) · `AMI_*`, `OUTBOUND_TRUNK`, `CAMPAIGN_BATCH` (P5) · `SCREENPOP_URL` (P6) · `CONSOLE_PORT` (P3)
 
 ## Postgres + REST API (P0)
 เก็บ `calls` / `turns` / tool calls / `tickets` / latency ลง Postgres และเปิด REST API ให้ console (P3) กับ analytics (P4) ใช้ต่อ
@@ -92,6 +92,8 @@ docker compose up -d postgres
 ตาราง: `tenants`, `agents`, `calls`, `turns`, `tool_calls`, `turn_metrics`, `tickets`, `contacts`, `knowledge_documents`
 
 REST API (พอร์ต `API_PORT`, default 8090):
+- API **ไม่เปิด CORS** และถ้าตั้ง `API_TOKEN` จะบังคับ header `x-api-key` ทุกเส้นทาง `/api/*` — console เรียกผ่าน proxy ฝั่ง server (`console/app/api/[...path]`) จึงแนบ token ให้เองและ browser ไม่เคยเห็น token
+- `/health` ไม่ต้องใช้ token (ใช้ตรวจสถานะ) · `/line/webhook` ป้องกันด้วย signature ของ LINE เอง
 
 | Endpoint | หน้าที่ |
 |---|---|
@@ -198,6 +200,8 @@ exten => _200[12],1,Dial(PJSIP/${EXTEN},30)
 [police-ai]
 exten => s,1,Answer()
  same => n,Set(CALLID=${SHELL(tr -d '\n' < /proc/sys/kernel/random/uuid)})
+; สายโทรออกของแคมเปญ: AMI ส่ง CAMPAIGN_TARGET มา -> ใช้ target id เป็น CALLID ให้ bridge รู้ว่าเป็นสายออก
+ same => n,ExecIf($["${CAMPAIGN_TARGET}" != ""]?Set(CALLID=${CAMPAIGN_TARGET}))
  same => n,ExecIf($["${RECORD_CALLS}" = "1"]?MixMonitor(/recordings/${CALLID}.wav))
  same => n,Set(CURLOPT(conntimeout)=2)
  same => n,Set(CURLOPT(httptimeout)=3)
@@ -206,6 +210,8 @@ exten => s,1,Answer()
  same => n,TryExec(AudioSocket(${CALLID},127.0.0.1:${AUDIOSOCKET_PORT}))
  same => n,Set(NEXT=${CURL(http://127.0.0.1:${PORT}/next/${CALLID})})
  same => n,Verbose(1,police-ai ${CALLID} NEXT=[${NEXT}] TRYSTATUS=${TRYSTATUS})
+ ; สายออกของแคมเปญ: คุยจบแล้ววางสายเสมอ ห้ามโอนปลายทางเข้าคิวเจ้าหน้าที่ของเรา
+ same => n,GotoIf($["${CAMPAIGN_TARGET}" != ""]?bye)
  same => n,GotoIf($["${NEXT}" = "emergency"]?emergency)
  same => n,GotoIf($["${NEXT}" = "hangup"]?bye)
  ; transfer / ว่าง / CURL fail -> เจ้าหน้าที่ (fail-safe)
