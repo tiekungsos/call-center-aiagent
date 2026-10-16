@@ -38,6 +38,7 @@ type Body = {
   voice?: string;
   enabledTools?: string[];
   is_active?: boolean;
+  gender?: string;
 };
 
 async function tenantOf(slug?: string) {
@@ -248,6 +249,7 @@ export function buildApi() {
       knowledgeBase: req.body?.knowledgeBase,
       styleExtra: req.body?.styleExtra,
       voice: req.body?.voice,
+      gender: req.body?.gender,
       enabledTools: req.body?.enabledTools,
     });
     if (!agent) return reply.code(500).send({ error: 'สร้าง agent ไม่สำเร็จ (ชื่อซ้ำกับที่มีอยู่?)' });
@@ -262,6 +264,8 @@ export function buildApi() {
     const body = { ...(req.body ?? {}) } as Record<string, unknown>;
     const wantsActive = body.is_active === true;
     delete body.is_active; // ตั้ง "ใช้งาน" ต้องปิดตัวอื่นด้วย จึงแยกจัดการ
+    // เพศมีได้ 2 ค่า — กันค่าอื่นหลุดลง DB (คุมคำลงท้าย ครับ/ค่ะ ใน prompt)
+    if ('gender' in body) body.gender = body.gender === 'male' ? 'male' : 'female';
     const updated = Object.keys(body).length ? await store.updateAgent(req.params.id, body) : existing;
     if (!updated) return reply.code(404).send({ error: 'not found' });
     const agent = wantsActive ? ((await store.setActiveAgent(existing.tenant_id, req.params.id)) ?? updated) : updated;

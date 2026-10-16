@@ -1,6 +1,6 @@
 import type { FunctionDeclaration } from '@google/genai';
 import { allProfiles, getActiveProfile } from '../profiles/index.js';
-import type { BusinessProfile } from '../profiles/types.js';
+import type { BusinessProfile, Gender } from '../profiles/types.js';
 import { buildSystemPrompt } from '../prompt.js';
 import { toolsFor, toolsFromNames } from '../tools.js';
 import * as store from './store.js';
@@ -17,6 +17,7 @@ export interface ResolvedAgent {
   tools: FunctionDeclaration[];
   voice: string;
   model: string;
+  gender: Gender;
 }
 
 const CACHE_TTL_MS = Number(process.env.AGENT_CACHE_TTL_MS ?? 60_000);
@@ -85,6 +86,7 @@ async function resolve(): Promise<ResolvedAgent> {
     // console (DB) เป็นเจ้าของค่า — env VOICE/GEMINI_MODEL เป็นแค่ค่าเริ่มต้นของ agent ที่ยังไม่ได้ตั้ง
     voice: row?.voice?.trim() || agentDefaults().voice,
     model: row?.model?.trim() || agentDefaults().model,
+    gender: profile.gender === 'male' ? 'male' : 'female',
   };
 }
 
@@ -106,5 +108,6 @@ function profileFromRow(row: AgentRow, fallback: BusinessProfile): BusinessProfi
     toolGuide: row.tool_guide ?? fallback.toolGuide,
     knowledgeBase: row.knowledge_base ?? fallback.knowledgeBase,
     styleExtra: row.style_extra ?? fallback.styleExtra,
+    gender: row.gender === 'male' ? 'male' : 'female',
   };
 }

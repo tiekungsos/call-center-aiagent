@@ -19,6 +19,7 @@ export interface AgentRow {
   style_extra: string | null;
   voice: string | null;
   model: string | null;
+  gender: string;
   enabled_tools: string[];
   status: string;
   is_active: boolean;
@@ -65,8 +66,8 @@ export const listTenants = () => q<Tenant>(`select id, slug, name from tenants o
 export async function seedAgents(tenantId: string, profiles: BusinessProfile[]): Promise<void> {
   for (const p of profiles) {
     await q(
-      `insert into agents (tenant_id, profile_id, name, persona, tool_guide, knowledge_base, style_extra, enabled_tools)
-       values ($1, $2, $3, $4, $5, $6, $7, $8)
+      `insert into agents (tenant_id, profile_id, name, persona, tool_guide, knowledge_base, style_extra, gender, enabled_tools)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        on conflict (tenant_id, profile_id) do nothing`,
       [
         tenantId,
@@ -76,6 +77,7 @@ export async function seedAgents(tenantId: string, profiles: BusinessProfile[]):
         p.toolGuide,
         p.knowledgeBase,
         p.styleExtra ?? null,
+        p.gender === 'male' ? 'male' : 'female',
         toolsFor(p).map((t) => t.name),
       ],
     );
@@ -122,13 +124,14 @@ export async function createAgent(a: {
   knowledgeBase?: string;
   styleExtra?: string;
   voice?: string;
+  gender?: string;
   enabledTools?: string[];
 }): Promise<AgentRow | undefined> {
   const profileId = (a.profileId?.trim() || `custom-${Date.now().toString(36)}`).toLowerCase();
   return (
     await q<AgentRow>(
-      `insert into agents (tenant_id, profile_id, name, persona, tool_guide, knowledge_base, style_extra, voice, enabled_tools)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `insert into agents (tenant_id, profile_id, name, persona, tool_guide, knowledge_base, style_extra, voice, gender, enabled_tools)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        returning *`,
       [
         a.tenantId,
@@ -139,6 +142,7 @@ export async function createAgent(a: {
         a.knowledgeBase ?? null,
         a.styleExtra ?? null,
         a.voice ?? null,
+        a.gender === 'male' ? 'male' : 'female',
         a.enabledTools ?? [],
       ],
     )
@@ -155,7 +159,18 @@ export const getAgentById = async (id: string) => (await q<AgentRow>(`select * f
 export const listAgents = (tenantId: string) =>
   q<AgentRow>(`select * from agents where tenant_id=$1 order by profile_id`, [tenantId]);
 
-const AGENT_FIELDS = ['name', 'persona', 'tool_guide', 'knowledge_base', 'style_extra', 'voice', 'model', 'enabled_tools', 'status'] as const;
+const AGENT_FIELDS = [
+  'name',
+  'persona',
+  'tool_guide',
+  'knowledge_base',
+  'style_extra',
+  'voice',
+  'model',
+  'gender',
+  'enabled_tools',
+  'status',
+] as const;
 
 export async function updateAgent(id: string, patch: Record<string, unknown>): Promise<AgentRow | undefined> {
   const sets: string[] = [];

@@ -1,5 +1,8 @@
 import type { FunctionDeclaration } from '@google/genai';
 
+/** เพศของเจ้าหน้าที่ AI — คุมคำลงท้าย (ครับ/ค่ะ) และใช้จัดกลุ่มเสียง */
+export type Gender = 'male' | 'female';
+
 /**
  * 1 โปรไฟล์ = 1 บริบทธุรกิจของ agent เลือกใช้ด้วย env AGENT_PROFILE
  * โครงสร้าง prompt ที่ประกอบออกมา: persona -> PDPA -> เครื่องมือ -> สไตล์พูด -> ฐานความรู้
@@ -17,6 +20,8 @@ export interface BusinessProfile {
   knowledgeBase: string;
   /** หมายเหตุสไตล์พูดเฉพาะธุรกิจ ต่อท้ายสไตล์กลาง (ถ้ามี) */
   styleExtra?: string;
+  /** เพศของเจ้าหน้าที่ AI (ไม่ใส่ = female) */
+  gender?: Gender;
   /** ค่าเริ่มต้นเสียงของโมเดล (env VOICE ทับได้) */
   voice?: string;
   /** ค่าเริ่มต้นโมเดล (env GEMINI_MODEL ทับได้) */

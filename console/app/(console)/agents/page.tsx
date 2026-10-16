@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { apiSend, CLIENT_API, TENANT } from '@/lib/api';
-import { VOICES } from '@/lib/voices';
+import { VOICES, GENDER_LABEL, voiceGender, voicesOf, type Gender } from '@/lib/voices';
 
 interface Agent {
   id: string;
@@ -14,6 +14,7 @@ interface Agent {
   style_extra: string | null;
   voice: string | null;
   model: string | null;
+  gender: string;
   enabled_tools: string[];
   status: string;
   is_active: boolean;
@@ -83,6 +84,7 @@ export default function AgentsPage() {
       const { agent } = await apiSend<{ agent: Agent }>(`/api/agents/${draft.id}`, 'PATCH', {
         name: draft.name,
         voice: draft.voice || null,
+        gender: draft.gender,
         status: draft.status,
         persona: draft.persona,
         tool_guide: draft.tool_guide,
@@ -125,6 +127,7 @@ export default function AgentsPage() {
         knowledge_base: base?.knowledge_base ?? undefined,
         style_extra: base?.style_extra ?? undefined,
         voice: base?.voice ?? undefined,
+        gender: base?.gender ?? undefined,
         enabled_tools: base?.enabled_tools ?? coreTools,
       });
       setCreating(false);
@@ -163,6 +166,12 @@ export default function AgentsPage() {
           }
         : d,
     );
+
+  // เตือนเมื่อเสียงที่เลือกเป็นคนละเพศกับ agent (เสียงไม่เปลี่ยนคำลงท้าย — prompt ใช้เพศของ agent)
+  const effGender: Gender = draft?.gender === 'male' ? 'male' : 'female';
+  const effVoice = draft ? draft.voice || defaults?.voice || '' : '';
+  const voiceGenderValue = effVoice ? voiceGender(effVoice) : undefined;
+  const voiceMismatch = voiceGenderValue && voiceGenderValue !== effGender ? GENDER_LABEL[voiceGenderValue] : null;
 
   return (
     <>
@@ -270,20 +279,13 @@ export default function AgentsPage() {
                 <input value={draft.name} onChange={(e) => set('name', e.target.value)} />
               </label>
               <label>
-                เสียง
-                <select value={draft.voice ?? ''} onChange={(e) => set('voice', e.target.value)}>
-                  <option value="">ค่าเริ่มต้นของระบบ ({defaults?.voice ?? '…'})</option>
-                  {VOICES.map((v) => (
-                    <option key={v.name} value={v.name}>
-                      {v.name} — {v.tone}, {v.pitch}
-                    </option>
-                  ))}
-                  {draft.voice && !VOICES.some((v) => v.name === draft.voice) ? (
-                    <option value={draft.voice}>{draft.voice} (กำหนดเอง)</option>
-                  ) : null}
+                เพศของเจ้าหน้าที่ AI
+                <select value={draft.gender === 'male' ? 'male' : 'female'} onChange={(e) => set('gender', e.target.value)}>
+                  <option value="female">หญิง — ลงท้ายด้วย ค่ะ / คะ / นะคะ</option>
+                  <option value="male">ชาย — ลงท้ายด้วย ครับ / นะครับ</option>
                 </select>
                 <span className="dim" style={{ fontSize: 11, fontWeight: 400 }}>
-                  ใช้จริง: <span className="mono">{draft.voice || defaults?.voice || '—'}</span> (มีผลกับสายใหม่)
+                  คุมคำลงท้ายที่ AI พูด — ไม่เกี่ยวกับเสียงที่เลือก
                 </span>
               </label>
               <label>
@@ -294,6 +296,40 @@ export default function AgentsPage() {
                 </select>
               </label>
             </div>
+
+            <label>
+              เสียง
+              <select value={draft.voice ?? ''} onChange={(e) => set('voice', e.target.value)}>
+                <option value="">ค่าเริ่มต้นของระบบ ({defaults?.voice ?? '…'})</option>
+                <optgroup label="เสียงหญิง (14)">
+                  {voicesOf('female').map((v) => (
+                    <option key={v.name} value={v.name}>
+                      {v.name} — {v.tone}, {v.pitch}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="เสียงชาย (16)">
+                  {voicesOf('male').map((v) => (
+                    <option key={v.name} value={v.name}>
+                      {v.name} — {v.tone}, {v.pitch}
+                    </option>
+                  ))}
+                </optgroup>
+                {draft.voice && !VOICES.some((v) => v.name === draft.voice) ? (
+                  <option value={draft.voice}>{draft.voice} (กำหนดเอง)</option>
+                ) : null}
+              </select>
+              <span className="row wrap" style={{ gap: 6, fontWeight: 400 }}>
+                <span className="dim" style={{ fontSize: 11 }}>
+                  ใช้จริง: <span className="mono">{draft.voice || defaults?.voice || '—'}</span> (มีผลกับสายใหม่)
+                </span>
+                {voiceMismatch ? (
+                  <span className="chip warn">
+                    เสียงเป็น{voiceMismatch} แต่ agent เป็น{GENDER_LABEL[effGender]} — คำลงท้ายจะตามเพศของ agent
+                  </span>
+                ) : null}
+              </span>
+            </label>
 
             <div>
               <span className="dim" style={{ fontSize: 12, fontWeight: 600 }}>

@@ -37,6 +37,9 @@ create table if not exists agents (
 alter table agents add column if not exists is_active boolean not null default false;
 create unique index if not exists agents_one_active_per_tenant_idx on agents (tenant_id) where is_active;
 
+-- เพศของเจ้าหน้าที่ AI (male | female) — คุมคำลงท้าย ครับ/ค่ะ และใช้จัดกลุ่มเสียงใน console
+alter table agents add column if not exists gender text not null default 'female';
+
 -- ซ่อมข้อมูลเดิม: seed รุ่นก่อนบันทึกแค่เครื่องมือเฉพาะโปรไฟล์ ทำให้เครื่องมือกลาง (โอนสาย/
 -- เปิดเรื่อง/วางสาย/ค้น RAG) หายไปจากสายจริง — เติมกลับเฉพาะแถวที่มีรายการอยู่แล้วแต่ขาดกลาง
 -- (แถวที่ว่างเปล่ายังหมายถึง "ใช้เครื่องมือทั้งหมดของโปรไฟล์")
