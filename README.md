@@ -131,7 +131,7 @@ cd console && npm install && npm run dev   # http://127.0.0.1:3000
 | `/calls`, `/calls/[id]` | รายการสาย + transcript เต็ม, tool calls, latency, สรุป/ความต้องการ/อารมณ์ |
 | `/tickets` | เรื่องร้องเรียนที่ AI เปิดไว้ให้ติดต่อกลับ |
 | `/agents` | เลือก agent ที่ใช้งาน (ปุ่ม “ตั้งเป็นใช้งาน”), แก้ persona / tool guide / ฐานความรู้ / เครื่องมือ / voice, เพิ่ม-ลบ agent — มีผลกับสายใหม่ทันที |
-| `/knowledge` | อัปโหลดเอกสารเข้า RAG (ผูกกับ agent หรือใช้ร่วมทุก agent) + ทดสอบค้นหา + ลบ |
+| `/knowledge` | คลังความรู้ (RAG) ของแต่ละ agent — เลือก agent แล้วเพิ่ม/ทดสอบค้นหา/ลบ (แยกคลังกัน ไม่มีแบบใช้ร่วม) |
 | `/campaigns` | สร้างแคมเปญโทรออก, สั่งเริ่ม, ดูผลรายเบอร์ |
 | `/settings` | webhook ไป CRM/ERP (+ ค่า `SCREENPOP_URL` ฝั่ง bridge) |
 | `/users` | จัดการผู้ใช้ console (admin เท่านั้น): เพิ่ม/ปิดใช้/เปลี่ยนสิทธิ์/รีเซ็ตรหัสผ่าน/ลบ |

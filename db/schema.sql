@@ -123,10 +123,11 @@ create table if not exists contacts (
 );
 
 -- คลังความรู้ (P1: RAG) — chunk + embedding 768 มิติ (DeepInfra google/embeddinggemma-2)
+-- เอกสารผูกกับ agent โดยตรง (แยกคลังกันแต่ละ agent) — ไม่มีแบบใช้ร่วมทุก agent
 create table if not exists knowledge_documents (
   id         uuid primary key default gen_random_uuid(),
   tenant_id  uuid not null references tenants(id) on delete cascade,
-  agent_id   uuid references agents(id) on delete cascade,
+  agent_id   uuid not null references agents(id) on delete cascade,
   title      text,
   content    text not null,
   embedding  vector(768),
@@ -135,6 +136,26 @@ create table if not exists knowledge_documents (
 );
 -- สำหรับ DB ที่สร้างไว้ก่อนมี RAG
 alter table knowledge_documents add column if not exists embedding vector(768);
+
+-- ย้ายเอกสารเดิมที่ไม่ระบุ agent ให้ไปอยู่กับ agent ที่ใช้งานของ tenant นั้น แล้วบังคับ not null
+update knowledge_documents d
+   set agent_id = a.id
+  from agents a
+ where d.agent_id is null and a.tenant_id = d.tenant_id and a.is_active;
+
+update knowledge_documents d
+   set agent_id = (select a.id from agents a where a.tenant_id = d.tenant_id order by a.created_at limit 1)
+ where d.agent_id is null;
+
+do $mig$
+begin
+  if not exists (select 1 from knowledge_documents where agent_id is null) then
+    alter table knowledge_documents alter column agent_id set not null;
+  else
+    raise notice '[schema] ยังมีเอกสารที่ไม่ผูก agent — ข้ามการตั้ง not null';
+  end if;
+end
+$mig$;
 
 -- ย้ายมิติ embedding ให้ตรงกับโมเดลที่ใช้ (google/embeddinggemma-2 = 768 มิติ)
 -- ค่า embedding ของโมเดลเก่าใช้กับโมเดลใหม่ไม่ได้ จึงล้างทิ้ง (ตัวเอกสารยังอยู่ แต่ต้องอัปโหลดใหม่เพื่อสร้าง embedding)

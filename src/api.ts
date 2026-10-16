@@ -376,11 +376,12 @@ export function buildApi() {
     return { deleted: true };
   });
 
-  // --- P1: คลังความรู้ (RAG) — ผูกเอกสารกับ agent ได้ ---
-  app.get<{ Querystring: Q & { agentId?: string } }>('/api/knowledge', async (req) => {
+  // --- P1: คลังความรู้ (RAG) — ผูกกับ agent เท่านั้น (แยกคลังกันแต่ละ agent) ---
+  app.get<{ Querystring: Q & { agentId?: string } }>('/api/knowledge', async (req, reply) => {
     const t = await tenantOf(req.query.tenant);
     if (!t) return { documents: [], chunks: 0 };
-    const agentId = req.query.agentId?.trim() || undefined;
+    const agentId = req.query.agentId?.trim();
+    if (!agentId) return reply.code(400).send({ error: 'ต้องระบุ agentId — คลังความรู้แยกกันแต่ละ agent' });
     const [documents, chunks] = await Promise.all([knowledge.listDocs(t.id, agentId), knowledge.countDocs(t.id, agentId)]);
     return { documents: documents ?? [], chunks: Number(chunks) };
   });
@@ -390,12 +391,9 @@ export function buildApi() {
     if (!t) return reply.code(400).send({ error: 'unknown tenant' });
     const content = req.body?.content?.trim();
     if (!content) return reply.code(400).send({ error: 'content required' });
-    const chunks = await knowledge.ingest({
-      tenantId: t.id,
-      agentId: req.body?.agentId,
-      title: req.body?.title,
-      content,
-    });
+    const agentId = req.body?.agentId?.trim();
+    if (!agentId) return reply.code(400).send({ error: 'ต้องระบุ agentId — เอกสารต้องผูกกับ agent' });
+    const chunks = await knowledge.ingest({ tenantId: t.id, agentId, title: req.body?.title, content });
     return { chunks, status: chunks ? 'ingested' : 'failed' };
   });
 
@@ -404,7 +402,9 @@ export function buildApi() {
     if (!t) return reply.code(400).send({ error: 'unknown tenant' });
     const query = req.body?.query?.trim();
     if (!query) return reply.code(400).send({ error: 'query required' });
-    return { results: await knowledge.search(t.id, query, req.body?.k ?? 4, req.body?.agentId) };
+    const agentId = req.body?.agentId?.trim();
+    if (!agentId) return reply.code(400).send({ error: 'ต้องระบุ agentId — คลังความรู้แยกกันแต่ละ agent' });
+    return { results: await knowledge.search(t.id, query, req.body?.k ?? 4, agentId) };
   });
 
   app.delete<{ Params: { id: string } }>('/api/knowledge/:id', async (req) => {

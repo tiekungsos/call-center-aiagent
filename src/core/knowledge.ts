@@ -27,10 +27,10 @@ export function chunk(text: string, size = 1200, overlap = 150): string[] {
   return out.length ? out : [text];
 }
 
-/** อัปโหลดเอกสารเข้าคลังความรู้ (chunk + embed) — คืนจำนวน chunk ที่สำเร็จ */
+/** อัปโหลดเอกสารเข้าคลังความรู้ของ agent (chunk + embed) — คืนจำนวน chunk ที่สำเร็จ */
 export async function ingest(opts: {
   tenantId: string;
-  agentId?: string;
+  agentId: string;
   title?: string;
   content: string;
 }): Promise<number> {
@@ -41,7 +41,7 @@ export async function ingest(opts: {
     const rows = await q(
       `insert into knowledge_documents (tenant_id, agent_id, title, content, embedding)
        values ($1, $2, $3, $4, $5::vector) returning id`,
-      [opts.tenantId, opts.agentId ?? null, opts.title ?? null, c, toVector(vec)],
+      [opts.tenantId, opts.agentId, opts.title ?? null, c, toVector(vec)],
     );
     if (rows) n++;
   }
@@ -49,41 +49,39 @@ export async function ingest(opts: {
 }
 
 /**
- * ค้นคลังความรู้ด้วย cosine similarity
- * agentId: ถ้าระบุ จะเห็นเอกสารของ agent นั้น + เอกสารที่ใช้ร่วม (agent_id is null)
+ * ค้นคลังความรู้ด้วย cosine similarity — ผูกกับ agent เท่านั้น
+ * ไม่มี agentId = ค้นไม่ได้ (คลังแยกกันแต่ละ agent ไม่มีข้อมูลใช้ร่วม)
  */
 export async function search(tenantId: string, query: string, k = 4, agentId?: string): Promise<KnowledgeHit[]> {
+  if (!agentId) return [];
   const vec = await embed(query, 'search_query');
   if (!vec) return [];
   const literal = toVector(vec);
-  const scope = agentId ? `and (agent_id is null or agent_id = $4)` : '';
-  const params: unknown[] = [tenantId, literal, k];
-  if (agentId) params.push(agentId);
   return (
     (await q<KnowledgeHit>(
       `select title, content, 1 - (embedding <=> $2::vector) as score
        from knowledge_documents
-       where tenant_id = $1 and embedding is not null ${scope}
+       where tenant_id = $1 and agent_id = $4 and embedding is not null
        order by embedding <=> $2::vector
        limit $3`,
-      params,
+      [tenantId, literal, k, agentId],
     )) ?? []
   );
 }
 
-/** เอกสารในคลัง — กรองตาม agent ได้ (ไม่ระบุ = ทั้ง tenant) */
-export const listDocs = (tenantId: string, agentId?: string) =>
+/** เอกสารในคลังของ agent */
+export const listDocs = (tenantId: string, agentId: string) =>
   q(
     `select id, agent_id, title, left(content, 240) as preview, created_at
-     from knowledge_documents where tenant_id=$1 ${agentId ? 'and agent_id=$2' : ''}
+     from knowledge_documents where tenant_id=$1 and agent_id=$2
      order by created_at desc limit 200`,
-    agentId ? [tenantId, agentId] : [tenantId],
+    [tenantId, agentId],
   );
 
 export const removeDoc = (id: string) => q(`delete from knowledge_documents where id=$1`, [id]);
 
-export const countDocs = async (tenantId: string, agentId?: string) =>
-  (await q<{ n: string }>(
-    `select count(*) as n from knowledge_documents where tenant_id=$1 ${agentId ? 'and agent_id=$2' : ''}`,
-    agentId ? [tenantId, agentId] : [tenantId],
-  ))?.[0]?.n ?? '0';
+export const countDocs = async (tenantId: string, agentId: string) =>
+  (await q<{ n: string }>(`select count(*) as n from knowledge_documents where tenant_id=$1 and agent_id=$2`, [
+    tenantId,
+    agentId,
+  ]))?.[0]?.n ?? '0';
