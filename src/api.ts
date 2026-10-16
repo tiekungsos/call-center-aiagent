@@ -10,6 +10,7 @@ import * as knowledge from './core/knowledge.js';
 import * as store from './core/store.js';
 import { dbEnabled } from './db.js';
 import { outboundReady, startCampaign } from './outbound/campaign.js';
+import { ALL_TOOLS, CORE_TOOLS } from './tools.js';
 
 type Q = { tenant?: string; limit?: string; offset?: string };
 type Body = {
@@ -29,6 +30,14 @@ type Body = {
   password?: string;
   role?: string;
   disabled?: boolean;
+  profileId?: string;
+  persona?: string;
+  toolGuide?: string;
+  knowledgeBase?: string;
+  styleExtra?: string;
+  voice?: string;
+  enabledTools?: string[];
+  is_active?: boolean;
 };
 
 async function tenantOf(slug?: string) {
@@ -208,16 +217,62 @@ export function buildApi() {
     return { agents: t ? ((await store.listAgents(t.id)) ?? []) : [] };
   });
 
+  /** เครื่องมือทั้งหมดที่ระบบรู้จัก — ให้ console แสดง checkbox เปิด/ปิดต่อ agent */
+  app.get('/api/tools', async () => ({
+    tools: ALL_TOOLS.map((t) => ({ name: t.name, description: t.description })),
+    core: CORE_TOOLS.map((t) => t.name),
+  }));
+
   app.get<{ Params: { id: string } }>('/api/agents/:id', async (req, reply) => {
     const agent = await store.getAgentById(req.params.id);
     return agent ? { agent } : reply.code(404).send({ error: 'not found' });
   });
 
-  app.patch<{ Params: { id: string }; Body: Record<string, unknown> }>('/api/agents/:id', async (req, reply) => {
-    const agent = await store.updateAgent(req.params.id, req.body ?? {});
-    if (!agent) return reply.code(404).send({ error: 'not found' });
-    invalidateActiveAgent(); // ให้ bridge ใช้ค่าใหม่ภายใน ~1 นาที
+  /** สร้าง agent ใหม่จาก console (ไม่ต้องมีโปรไฟล์ในโค้ด) */
+  app.post<{ Body: Body }>('/api/agents', async (req, reply) => {
+    const t = await tenantOf(req.body?.tenant);
+    if (!t) return reply.code(400).send({ error: 'unknown tenant' });
+    const name = req.body?.name?.trim();
+    if (!name) return reply.code(400).send({ error: 'ต้องระบุชื่อ agent' });
+    const agent = await store.createAgent({
+      tenantId: t.id,
+      profileId: req.body?.profileId,
+      name,
+      persona: req.body?.persona,
+      toolGuide: req.body?.toolGuide,
+      knowledgeBase: req.body?.knowledgeBase,
+      styleExtra: req.body?.styleExtra,
+      voice: req.body?.voice,
+      enabledTools: req.body?.enabledTools,
+    });
+    if (!agent) return reply.code(500).send({ error: 'สร้าง agent ไม่สำเร็จ (ชื่อซ้ำกับที่มีอยู่?)' });
+    if (req.body?.is_active) await store.setActiveAgent(t.id, agent.id);
+    invalidateActiveAgent();
+    return { agent: (await store.getAgentById(agent.id)) ?? agent };
+  });
+
+  app.patch<{ Params: { id: string }; Body: Body }>('/api/agents/:id', async (req, reply) => {
+    const existing = await store.getAgentById(req.params.id);
+    if (!existing) return reply.code(404).send({ error: 'not found' });
+    const body = { ...(req.body ?? {}) } as Record<string, unknown>;
+    const wantsActive = body.is_active === true;
+    delete body.is_active; // ตั้ง "ใช้งาน" ต้องปิดตัวอื่นด้วย จึงแยกจัดการ
+    const updated = Object.keys(body).length ? await store.updateAgent(req.params.id, body) : existing;
+    if (!updated) return reply.code(404).send({ error: 'not found' });
+    const agent = wantsActive ? ((await store.setActiveAgent(existing.tenant_id, req.params.id)) ?? updated) : updated;
+    invalidateActiveAgent(); // ให้ bridge ใช้ค่าใหม่ทันที (ไม่ต้องรอ cache 1 นาที)
     return { agent };
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/agents/:id', async (req, reply) => {
+    const agent = await store.getAgentById(req.params.id);
+    if (!agent) return reply.code(404).send({ error: 'not found' });
+    if (agent.is_active) {
+      return reply.code(400).send({ error: 'ลบ agent ที่ใช้งานอยู่ไม่ได้ — เปลี่ยนตัวที่ใช้งานก่อน' });
+    }
+    await store.deleteAgent(req.params.id);
+    invalidateActiveAgent();
+    return { deleted: true };
   });
 
   app.get<{ Querystring: Q }>('/api/calls', async (req) => {
@@ -317,11 +372,12 @@ export function buildApi() {
     return { deleted: true };
   });
 
-  // --- P1: คลังความรู้ (RAG) ---
-  app.get<{ Querystring: Q }>('/api/knowledge', async (req) => {
+  // --- P1: คลังความรู้ (RAG) — ผูกเอกสารกับ agent ได้ ---
+  app.get<{ Querystring: Q & { agentId?: string } }>('/api/knowledge', async (req) => {
     const t = await tenantOf(req.query.tenant);
     if (!t) return { documents: [], chunks: 0 };
-    const [documents, chunks] = await Promise.all([knowledge.listDocs(t.id), knowledge.countDocs(t.id)]);
+    const agentId = req.query.agentId?.trim() || undefined;
+    const [documents, chunks] = await Promise.all([knowledge.listDocs(t.id, agentId), knowledge.countDocs(t.id, agentId)]);
     return { documents: documents ?? [], chunks: Number(chunks) };
   });
 
@@ -344,7 +400,7 @@ export function buildApi() {
     if (!t) return reply.code(400).send({ error: 'unknown tenant' });
     const query = req.body?.query?.trim();
     if (!query) return reply.code(400).send({ error: 'query required' });
-    return { results: await knowledge.search(t.id, query, req.body?.k ?? 4) };
+    return { results: await knowledge.search(t.id, query, req.body?.k ?? 4, req.body?.agentId) };
   });
 
   app.delete<{ Params: { id: string } }>('/api/knowledge/:id', async (req) => {

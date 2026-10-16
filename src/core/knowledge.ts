@@ -48,31 +48,42 @@ export async function ingest(opts: {
   return n;
 }
 
-/** ค้นคลังความรู้ด้วย cosine similarity */
-export async function search(tenantId: string, query: string, k = 4): Promise<KnowledgeHit[]> {
+/**
+ * ค้นคลังความรู้ด้วย cosine similarity
+ * agentId: ถ้าระบุ จะเห็นเอกสารของ agent นั้น + เอกสารที่ใช้ร่วม (agent_id is null)
+ */
+export async function search(tenantId: string, query: string, k = 4, agentId?: string): Promise<KnowledgeHit[]> {
   const vec = await embed(query);
   if (!vec) return [];
   const literal = toVector(vec);
+  const scope = agentId ? `and (agent_id is null or agent_id = $4)` : '';
+  const params: unknown[] = [tenantId, literal, k];
+  if (agentId) params.push(agentId);
   return (
     (await q<KnowledgeHit>(
       `select title, content, 1 - (embedding <=> $2::vector) as score
        from knowledge_documents
-       where tenant_id = $1 and embedding is not null
+       where tenant_id = $1 and embedding is not null ${scope}
        order by embedding <=> $2::vector
        limit $3`,
-      [tenantId, literal, k],
+      params,
     )) ?? []
   );
 }
 
-export const listDocs = (tenantId: string) =>
+/** เอกสารในคลัง — กรองตาม agent ได้ (ไม่ระบุ = ทั้ง tenant) */
+export const listDocs = (tenantId: string, agentId?: string) =>
   q(
     `select id, agent_id, title, left(content, 240) as preview, created_at
-     from knowledge_documents where tenant_id=$1 order by created_at desc limit 200`,
-    [tenantId],
+     from knowledge_documents where tenant_id=$1 ${agentId ? 'and agent_id=$2' : ''}
+     order by created_at desc limit 200`,
+    agentId ? [tenantId, agentId] : [tenantId],
   );
 
 export const removeDoc = (id: string) => q(`delete from knowledge_documents where id=$1`, [id]);
 
-export const countDocs = async (tenantId: string) =>
-  (await q<{ n: string }>(`select count(*) as n from knowledge_documents where tenant_id=$1`, [tenantId]))?.[0]?.n ?? '0';
+export const countDocs = async (tenantId: string, agentId?: string) =>
+  (await q<{ n: string }>(
+    `select count(*) as n from knowledge_documents where tenant_id=$1 ${agentId ? 'and agent_id=$2' : ''}`,
+    agentId ? [tenantId, agentId] : [tenantId],
+  ))?.[0]?.n ?? '0';

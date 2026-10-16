@@ -33,6 +33,21 @@ create table if not exists agents (
   unique (tenant_id, profile_id)
 );
 
+-- agent ที่ใช้งานจริง (รับสาย/แชท) — เลือกจาก console ได้ มีได้ 1 ตัวต่อ tenant
+alter table agents add column if not exists is_active boolean not null default false;
+create unique index if not exists agents_one_active_per_tenant_idx on agents (tenant_id) where is_active;
+
+-- ซ่อมข้อมูลเดิม: seed รุ่นก่อนบันทึกแค่เครื่องมือเฉพาะโปรไฟล์ ทำให้เครื่องมือกลาง (โอนสาย/
+-- เปิดเรื่อง/วางสาย/ค้น RAG) หายไปจากสายจริง — เติมกลับเฉพาะแถวที่มีรายการอยู่แล้วแต่ขาดกลาง
+-- (แถวที่ว่างเปล่ายังหมายถึง "ใช้เครื่องมือทั้งหมดของโปรไฟล์")
+update agents
+   set enabled_tools = (
+     select array_agg(distinct x)
+     from unnest(enabled_tools || array['transfer_to_agent', 'create_ticket', 'end_call', 'search_knowledge']::text[]) as t(x)
+   )
+ where cardinality(enabled_tools) > 0
+   and not (enabled_tools @> array['transfer_to_agent', 'create_ticket', 'end_call', 'search_knowledge']::text[]);
+
 -- 1 สาย/1 ห้องแชท = 1 call
 create table if not exists calls (
   id             text primary key,
@@ -121,6 +136,7 @@ create table if not exists knowledge_documents (
 -- สำหรับ DB ที่สร้างไว้ก่อนมี RAG
 alter table knowledge_documents add column if not exists embedding vector(768);
 create index if not exists knowledge_tenant_idx on knowledge_documents (tenant_id);
+create index if not exists knowledge_agent_idx on knowledge_documents (agent_id);
 create index if not exists knowledge_embedding_idx on knowledge_documents
   using hnsw (embedding vector_cosine_ops);
 

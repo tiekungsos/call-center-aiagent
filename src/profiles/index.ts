@@ -29,3 +29,11 @@ export function getActiveProfile(env: NodeJS.ProcessEnv = process.env): Business
   const sub = (s: string) => s.replaceAll('{{business}}', name);
   return { ...p, label: name, persona: sub(p.persona), knowledgeBase: sub(p.knowledgeBase) };
 }
+
+/** โปรไฟล์ทุกตัวในโค้ด (แทน {{business}} แล้ว) — ใช้ seed เข้า DB ให้ console เลือกได้ */
+export function allProfiles(env: NodeJS.ProcessEnv = process.env): BusinessProfile[] {
+  const name = env.BUSINESS_NAME?.trim();
+  return Object.values(PROFILES).map((p) =>
+    name ? { ...p, persona: p.persona.replaceAll('{{business}}', name), knowledgeBase: p.knowledgeBase.replaceAll('{{business}}', name) } : p,
+  );
+}

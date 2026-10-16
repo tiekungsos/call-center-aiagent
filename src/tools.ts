@@ -153,6 +153,32 @@ export const check_pawn_ticket: FunctionDeclaration = {
 /** รวมเครื่องมือกลาง + เครื่องมือเฉพาะของโปรไฟล์ */
 export const toolsFor = (profile: BusinessProfile): FunctionDeclaration[] => [...CORE_TOOLS, ...profile.tools];
 
+/** เครื่องมือทั้งหมดที่ระบบรู้จัก — ให้ console เลือกเปิด/ปิดต่อ agent ได้ */
+export const ALL_TOOLS: FunctionDeclaration[] = [
+  ...CORE_TOOLS,
+  report_emergency,
+  book_appointment,
+  book_reservation,
+  check_order,
+  check_pawn_ticket,
+];
+
+const TOOL_BY_NAME = new Map(ALL_TOOLS.map((t) => [t.name as string, t]));
+
+/** ประกอบเครื่องมือจากชื่อ (ที่เก็บใน agents.enabled_tools) — ข้ามชื่อที่ไม่รู้จักและชื่อซ้ำ */
+export const toolsFromNames = (names: string[]): FunctionDeclaration[] => {
+  const seen = new Set<string>();
+  const out: FunctionDeclaration[] = [];
+  for (const n of names) {
+    const t = TOOL_BY_NAME.get(n);
+    if (t && !seen.has(n)) {
+      seen.add(n);
+      out.push(t);
+    }
+  }
+  return out;
+};
+
 export async function runTool(name: string, args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
   switch (name) {
     case 'report_emergency':
@@ -224,7 +250,8 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
 
     case 'search_knowledge': {
       const query = String(args.query ?? '');
-      const hits = ctx.tenantId ? await knowledge.search(ctx.tenantId, query, 4) : [];
+      // กรองตาม agent ที่ใช้งาน (เอกสารที่ไม่ผูก agent = ใช้ร่วมทุก agent)
+      const hits = ctx.tenantId ? await knowledge.search(ctx.tenantId, query, 4, ctx.agentId) : [];
       return {
         response: hits.length
           ? {

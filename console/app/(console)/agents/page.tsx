@@ -15,32 +15,50 @@ interface Agent {
   model: string | null;
   enabled_tools: string[];
   status: string;
+  is_active: boolean;
   version: number;
   updated_at: string;
 }
 
+interface ToolInfo {
+  name: string;
+  description?: string;
+}
+
 export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [tools, setTools] = useState<ToolInfo[]>([]);
+  const [coreTools, setCoreTools] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState<Agent | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [cloneFrom, setCloneFrom] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch(`${CLIENT_API}/api/agents?tenant=${TENANT}`, { cache: 'no-store' });
-      const data = (await r.json()) as { agents: Agent[] };
+      const [agentRes, toolRes] = await Promise.all([
+        fetch(`${CLIENT_API}/api/agents?tenant=${TENANT}`, { cache: 'no-store' }),
+        fetch(`${CLIENT_API}/api/tools`, { cache: 'no-store' }),
+      ]);
+      const data = (await agentRes.json()) as { agents: Agent[] };
+      const toolData = (await toolRes.json()) as { tools: ToolInfo[]; core: string[] };
       setAgents(data.agents ?? []);
+      setTools(toolData.tools ?? []);
+      setCoreTools(toolData.core ?? []);
       setState('ready');
-      if (!selected && data.agents?.length) {
-        setSelected(data.agents[0].id);
-        setDraft(data.agents[0]);
-      }
+      setSelected((cur) => {
+        const next = cur && data.agents?.some((a) => a.id === cur) ? cur : (data.agents?.[0]?.id ?? null);
+        setDraft(data.agents?.find((a) => a.id === next) ?? null);
+        return next;
+      });
     } catch {
       setState('error');
     }
-  }, [selected]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -62,13 +80,14 @@ export default function AgentsPage() {
         voice: draft.voice || null,
         status: draft.status,
         persona: draft.persona,
+        tool_guide: draft.tool_guide,
         knowledge_base: draft.knowledge_base,
         style_extra: draft.style_extra,
         enabled_tools: draft.enabled_tools,
       });
       setAgents((prev) => prev.map((a) => (a.id === agent.id ? agent : a)));
       setDraft(agent);
-      setNotice(`บันทึกแล้ว (v${agent.version}) — มีผลกับสายใหม่ภายใน ~1 นาที`);
+      setNotice(`บันทึกแล้ว (v${agent.version}) — มีผลกับสายใหม่ทันที`);
     } catch (err) {
       setNotice(`บันทึกไม่สำเร็จ: ${(err as Error).message}`);
     } finally {
@@ -76,20 +95,115 @@ export default function AgentsPage() {
     }
   };
 
+  /** ตั้ง agent นี้เป็นตัวที่รับสาย/แชท (bridge ล้าง cache ให้ทันที) */
+  const activate = async (a: Agent) => {
+    setNotice(null);
+    try {
+      await apiSend(`/api/agents/${a.id}`, 'PATCH', { is_active: true });
+      setNotice(`ตั้ง "${a.name}" เป็น agent ที่ใช้งานแล้ว`);
+      await load();
+    } catch (err) {
+      setNotice(`ตั้งไม่สำเร็จ: ${(err as Error).message}`);
+    }
+  };
+
+  const create = async () => {
+    if (!newName.trim()) return;
+    const base = agents.find((a) => a.id === cloneFrom);
+    setNotice(null);
+    try {
+      const { agent } = await apiSend<{ agent: Agent }>('/api/agents', 'POST', {
+        tenant: TENANT,
+        name: newName,
+        persona: base?.persona ?? undefined,
+        tool_guide: base?.tool_guide ?? undefined,
+        knowledge_base: base?.knowledge_base ?? undefined,
+        style_extra: base?.style_extra ?? undefined,
+        voice: base?.voice ?? undefined,
+        enabled_tools: base?.enabled_tools ?? coreTools,
+      });
+      setCreating(false);
+      setNewName('');
+      setCloneFrom('');
+      setNotice(`สร้าง agent "${agent.name}" แล้ว — ยังไม่ใช้งาน กด "ตั้งเป็นใช้งาน" เมื่อพร้อม`);
+      await load();
+      pick(agent);
+    } catch (err) {
+      setNotice(`สร้างไม่สำเร็จ: ${(err as Error).message}`);
+    }
+  };
+
+  const remove = async (a: Agent) => {
+    if (!window.confirm(`ลบ agent "${a.name}" ?`)) return;
+    setNotice(null);
+    try {
+      await apiSend(`/api/agents/${a.id}`, 'DELETE');
+      setNotice('ลบ agent แล้ว');
+      setSelected(null);
+      await load();
+    } catch (err) {
+      setNotice(`ลบไม่สำเร็จ: ${(err as Error).message}`);
+    }
+  };
+
   const set = <K extends keyof Agent>(k: K, v: Agent[K]) => setDraft((d) => (d ? { ...d, [k]: v } : d));
+  const toggleTool = (name: string) =>
+    setDraft((d) =>
+      d
+        ? {
+            ...d,
+            enabled_tools: d.enabled_tools.includes(name)
+              ? d.enabled_tools.filter((x) => x !== name)
+              : [...d.enabled_tools, name],
+          }
+        : d,
+    );
 
   return (
     <>
       <div className="page-head">
         <div>
           <h1>Agent</h1>
-          <p>บทบาท ฐานความรู้ และเครื่องมือของแต่ละบริบทธุรกิจ</p>
+          <p>เลือกบริบทธุรกิจที่รับสาย/แชทจริง แล้วแก้บทบาท ฐานความรู้ และเครื่องมือได้จากที่นี่</p>
         </div>
+        <button className="btn" onClick={() => setCreating((v) => !v)}>
+          {creating ? 'ยกเลิก' : 'เพิ่ม agent'}
+        </button>
       </div>
 
       {state === 'error' ? <div className="banner err">ต่อ API ไม่ได้ — ตรวจว่า bridge รันอยู่</div> : null}
+      {notice ? <div className="banner">{notice}</div> : null}
 
-      <div className="grid" style={{ gridTemplateColumns: 'minmax(200px, 260px) 1fr', alignItems: 'start' }}>
+      {creating ? (
+        <div className="card card-pad grid" style={{ gap: 10, marginTop: 14 }}>
+          <h2>เพิ่ม agent ใหม่</h2>
+          <div className="grid cols-2">
+            <label>
+              ชื่อ agent
+              <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="เช่น ศูนย์บริการสาขา 2" />
+            </label>
+            <label>
+              คัดลอกเนื้อหาจาก (ไม่บังคับ)
+              <select value={cloneFrom} onChange={(e) => setCloneFrom(e.target.value)}>
+                <option value="">— เริ่มจากว่าง —</option>
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="row between">
+            <span className="dim">agent ใหม่จะยังไม่ถูกใช้งานจนกว่าจะกด “ตั้งเป็นใช้งาน”</span>
+            <button className="btn primary" onClick={create} disabled={!newName.trim()}>
+              สร้าง
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid" style={{ gridTemplateColumns: 'minmax(220px, 300px) 1fr', alignItems: 'start', marginTop: 14 }}>
         <div className="card">
           {state === 'loading' ? (
             <div className="card-pad grid" style={{ gap: 10 }}>
@@ -100,7 +214,7 @@ export default function AgentsPage() {
           ) : agents.length === 0 ? (
             <div className="empty">
               <strong>ยังไม่มี agent</strong>
-              ระบบจะ seed จากโปรไฟล์ในโค้ดเมื่อ bridge ต่อ DB ได้ครั้งแรก
+              ระบบจะ seed จากโปรไฟล์ในโค้ดเมื่อ bridge ต่อ DB ได้ครั้งแรก หรือกด “เพิ่ม agent”
             </div>
           ) : (
             <table>
@@ -112,7 +226,10 @@ export default function AgentsPage() {
                     style={{ cursor: 'pointer', background: a.id === selected ? 'var(--accent-soft)' : undefined }}
                   >
                     <td>
-                      <div style={{ fontWeight: 600 }}>{a.name}</div>
+                      <div className="row" style={{ gap: 6, alignItems: 'center' }}>
+                        <span style={{ fontWeight: 600 }}>{a.name}</span>
+                        {a.is_active ? <span className="chip ok">ใช้งาน</span> : null}
+                      </div>
                       <div className="dim mono" style={{ fontSize: 11 }}>
                         {a.profile_id} · v{a.version}
                       </div>
@@ -128,9 +245,18 @@ export default function AgentsPage() {
           <div className="card card-pad grid" style={{ gap: 14 }}>
             <div className="row between wrap">
               <h2>{draft.name}</h2>
-              <span className={`chip ${draft.status === 'published' ? 'ok' : ''}`}>
-                {draft.status === 'published' ? 'ใช้งาน' : 'ฉบับร่าง'}
-              </span>
+              <div className="row" style={{ gap: 8, alignItems: 'center' }}>
+                {draft.is_active ? (
+                  <span className="chip ok">กำลังใช้งาน</span>
+                ) : (
+                  <button className="btn primary" onClick={() => void activate(draft)}>
+                    ตั้งเป็นใช้งาน
+                  </button>
+                )}
+                <button className="btn ghost" onClick={() => void remove(draft)} disabled={draft.is_active}>
+                  ลบ
+                </button>
+              </div>
             </div>
 
             <div className="grid cols-3">
@@ -151,14 +277,30 @@ export default function AgentsPage() {
               </label>
             </div>
 
-            <label>
-              เครื่องมือที่เปิดใช้ (คั่นด้วย ,)
-              <input
-                value={draft.enabled_tools.join(', ')}
-                onChange={(e) => set('enabled_tools', e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
-                placeholder="check_pawn_ticket, report_emergency"
-              />
-            </label>
+            <div>
+              <span className="dim" style={{ fontSize: 12, fontWeight: 600 }}>
+                เครื่องมือที่เปิดใช้ (มีผลกับสายใหม่ทันที)
+              </span>
+              <div className="grid cols-2" style={{ gap: 6, marginTop: 8 }}>
+                {tools.map((t) => (
+                  <label key={t.name} className="row" style={{ gap: 7, fontWeight: 400, fontSize: 12.5 }}>
+                    <input
+                      type="checkbox"
+                      style={{ width: 'auto' }}
+                      checked={draft.enabled_tools.includes(t.name)}
+                      onChange={() => toggleTool(t.name)}
+                    />
+                    <span className="mono">{t.name}</span>
+                    {coreTools.includes(t.name) ? <span className="chip">กลาง</span> : null}
+                  </label>
+                ))}
+              </div>
+              {draft.enabled_tools.length === 0 ? (
+                <p className="muted" style={{ marginTop: 6, fontSize: 12 }}>
+                  ไม่เลือกอะไรเลย = ใช้เครื่องมือทั้งหมดของโปรไฟล์นี้ (ค่าเริ่มต้นเดิม)
+                </p>
+              ) : null}
+            </div>
 
             <label>
               Persona (บทบาท + กฎเฉพาะธุรกิจ)
@@ -166,8 +308,13 @@ export default function AgentsPage() {
             </label>
 
             <label>
-              ฐานความรู้
-              <textarea value={draft.knowledge_base ?? ''} onChange={(e) => set('knowledge_base', e.target.value)} rows={10} />
+              คำอธิบายเครื่องมือสำหรับโมเดล (tool guide)
+              <textarea value={draft.tool_guide ?? ''} onChange={(e) => set('tool_guide', e.target.value)} rows={4} />
+            </label>
+
+            <label>
+              ฐานความรู้ (ฝังใน prompt ของสาย — ส่วนนี้คือข้อมูลที่ AI ใช้ตอบโดยตรง)
+              <textarea value={draft.knowledge_base ?? ''} onChange={(e) => set('knowledge_base', e.target.value)} rows={14} />
             </label>
 
             <label>
@@ -176,7 +323,7 @@ export default function AgentsPage() {
             </label>
 
             <div className="row between wrap">
-              <span className="dim">{notice ?? 'แก้แล้วมีผลกับสายใหม่ภายใน ~1 นาที'}</span>
+              <span className="dim">{notice ?? 'แก้แล้วมีผลกับสายใหม่ทันที (ไม่ต้องรอ cache)'}</span>
               <button className="btn primary" onClick={save} disabled={saving}>
                 {saving ? 'กำลังบันทึก…' : 'บันทึก'}
               </button>

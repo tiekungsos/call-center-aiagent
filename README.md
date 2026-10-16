@@ -42,9 +42,9 @@ flowchart LR
 | `docs/voice-quality.md` | P7: แนวทางยกระดับคุณภาพเสียง (ซื้อ vs สร้าง) |
 
 ## บริบทธุรกิจ (Profile)
-ตัว agent ไม่ผูกกับธุรกิจใดธุรกิจหนึ่ง เลือกบริบทด้วย env `AGENT_PROFILE`:
+ตัว agent ไม่ผูกกับธุรกิจใดธุรกิจหนึ่ง — โปรไฟล์ทุกตัวในโค้ดถูก **seed เข้า DB ครั้งแรก** แล้วเลือก/แก้ได้จาก console
 
-| `AGENT_PROFILE` | ธุรกิจ (label) | เครื่องมือเฉพาะ |
+| โปรไฟล์ | ธุรกิจ (label) | เครื่องมือเฉพาะ |
 |---|---|---|
 | `police` (ค่าเริ่มต้น) | ศูนย์บริการข้อมูลตำรวจ | `report_emergency` |
 | `hospital` | โรงพยาบาล | `report_emergency`, `book_appointment` |
@@ -52,17 +52,22 @@ flowchart LR
 | `retail` | ร้านค้าออนไลน์ | `check_order` |
 | `pawnshop` | โรงรับจำนำควิกมันนี่ | `check_pawn_ticket` |
 
-ทุกโปรไฟล์ได้เครื่องมือกลาง `transfer_to_agent`, `create_ticket`, `end_call` อัตโนมัติ
+ทุกโปรไฟล์ได้เครื่องมือกลาง `transfer_to_agent`, `create_ticket`, `end_call`, `search_knowledge`
+
+**ลำดับการเลือก agent ที่ใช้งาน**
+1. agent ที่ตั้ง `is_active` ไว้ใน console (`/agents` → “ตั้งเป็นใช้งาน”) — **ตัวนี้ใช้จริง**
+2. ถ้ายังไม่มีตัวไหนถูกตั้ง ใช้โปรไฟล์จาก env `AGENT_PROFILE` เป็นค่าเริ่มต้น (แล้วตั้งเป็น active ให้อัตโนมัติ)
 
 ```bash
-AGENT_PROFILE=hotel npm run dev          # สลับเป็นบริบทโรงแรม
+AGENT_PROFILE=hotel npm run dev          # ค่าเริ่มต้นตอน seed ครั้งแรก
 AGENT_PROFILE=hospital BUSINESS_NAME="รพ.ตัวอย่าง" npm run dev
 ```
 
 - `BUSINESS_NAME` แทนที่ `{{business}}` ใน persona และฐานความรู้ (ไม่ใส่ = `label` เริ่มต้นของโปรไฟล์)
 - `VOICE` เปลี่ยนเสียงของโมเดลได้เหมือนเดิม
-- เพิ่มธุรกิจใหม่: สร้างไฟล์ใน `src/profiles/` ตาม `BusinessProfile` แล้วลงทะเบียนใน `src/profiles/index.ts` — ไม่ต้องแตะ `agent.ts`
+- เพิ่มธุรกิจใหม่: สร้างไฟล์ใน `src/profiles/` ตาม `BusinessProfile` แล้วลงทะเบียนใน `src/profiles/index.ts` — หรือสร้าง agent ใหม่ได้เลยจากหน้า `/agents`
 - `AGENT_PROFILE` ที่ไม่รู้จักจะ fallback เป็น `police` พร้อม log เตือน
+- **console เป็นเจ้าของข้อมูลหลัง seed** — แก้ persona/ฐานความรู้/เครื่องมือ/เสียง ใน `/agents` แล้วโค้ดจะไม่ทับ (`on conflict do nothing`)
 
 ## รัน
 ```bash
@@ -86,7 +91,7 @@ docker compose up -d postgres
 ```
 
 - **DB ไม่บังคับ** — ถ้าไม่ตั้ง `DATABASE_URL` bridge จะข้าม DB แล้วใช้โปรไฟล์ในโค้ด + `logs/*.jsonl` เหมือนเดิม (สายไม่สะดุดถ้า DB ล่ม เพราะ query ที่ fail จะถูกกลืนและ log ไว้)
-- tenant/agent ถูก seed จากโปรไฟล์ในโค้ดครั้งแรกที่ boot แล้วเก็บใน DB — แก้ทีหลังจาก console ผ่าน `PATCH /api/agents/:id` (มีผลกับสายใหม่ภายใน `AGENT_CACHE_TTL_MS`)
+- tenant/agent ถูก seed จากโปรไฟล์ในโค้ดครั้งแรกที่ boot แล้วเก็บใน DB — แก้/สลับจาก console ผ่าน `PATCH /api/agents/:id` (ล้าง cache ทันที)
 - ออกแบบ **multi-tenant** (`tenant_id` ทุกตาราง) แต่รันลูกค้าเดียวผ่าน `TENANT_SLUG`
 
 ตาราง: `tenants`, `agents`, `calls`, `turns`, `tool_calls`, `turn_metrics`, `tickets`, `contacts`, `knowledge_documents`, `campaigns`, `campaign_targets`, `webhooks`, `console_users`
@@ -101,7 +106,10 @@ REST API (พอร์ต `API_PORT`, default 8090):
 | `GET /api/tenants` | รายชื่อ tenant |
 | `GET /api/agents?tenant=` | agent ของ tenant |
 | `GET /api/agents/:id` | รายละเอียด agent |
-| `PATCH /api/agents/:id` | แก้ persona / ฐานความรู้ / tools / voice / status |
+| `POST /api/agents` | สร้าง agent ใหม่ (เลือก `is_active: true` เพื่อใช้งานทันที) |
+| `PATCH /api/agents/:id` | แก้ persona / tool guide / ฐานความรู้ / tools / voice / status · `is_active: true` = ตั้งเป็นตัวที่ใช้งาน |
+| `DELETE /api/agents/:id` | ลบ agent (ลบตัวที่ใช้งานอยู่ไม่ได้) |
+| `GET /api/tools` | เครื่องมือทั้งหมดที่ระบบรู้จัก (ให้ console แสดง checkbox) |
 | `GET /api/calls?tenant=&limit=&offset=` | รายการสาย |
 | `GET /api/calls/:id` | สาย + transcript + tool calls + latency |
 | `GET /api/tickets?tenant=` | เรื่องร้องเรียน / ขอติดต่อกลับ |
@@ -122,8 +130,8 @@ cd console && npm install && npm run dev   # http://127.0.0.1:3000
 | `/` | ภาพรวม: จำนวนสาย, latency เฉลี่ย, heatmap ช่วงเวลายุ่ง, ความต้องการที่พบบ่อย, อารมณ์ผู้ติดต่อ, สายล่าสุด |
 | `/calls`, `/calls/[id]` | รายการสาย + transcript เต็ม, tool calls, latency, สรุป/ความต้องการ/อารมณ์ |
 | `/tickets` | เรื่องร้องเรียนที่ AI เปิดไว้ให้ติดต่อกลับ |
-| `/agents` | แก้ persona / ฐานความรู้ / tools / voice / สถานะ (PATCH แล้วมีผลกับสายใหม่ใน ~1 นาที) |
-| `/knowledge` | อัปโหลดเอกสารเข้า RAG + ทดสอบค้นหา + ลบ |
+| `/agents` | เลือก agent ที่ใช้งาน (ปุ่ม “ตั้งเป็นใช้งาน”), แก้ persona / tool guide / ฐานความรู้ / เครื่องมือ / voice, เพิ่ม-ลบ agent — มีผลกับสายใหม่ทันที |
+| `/knowledge` | อัปโหลดเอกสารเข้า RAG (ผูกกับ agent หรือใช้ร่วมทุก agent) + ทดสอบค้นหา + ลบ |
 | `/campaigns` | สร้างแคมเปญโทรออก, สั่งเริ่ม, ดูผลรายเบอร์ |
 | `/settings` | webhook ไป CRM/ERP (+ ค่า `SCREENPOP_URL` ฝั่ง bridge) |
 | `/users` | จัดการผู้ใช้ console (admin เท่านั้น): เพิ่ม/ปิดใช้/เปลี่ยนสิทธิ์/รีเซ็ตรหัสผ่าน/ลบ |

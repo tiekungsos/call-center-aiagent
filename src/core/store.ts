@@ -1,5 +1,6 @@
-import { q } from '../db.js';
+import { getPool, q } from '../db.js';
 import type { BusinessProfile } from '../profiles/types.js';
+import { toolsFor } from '../tools.js';
 
 export interface Tenant {
   id: string;
@@ -20,6 +21,7 @@ export interface AgentRow {
   model: string | null;
   enabled_tools: string[];
   status: string;
+  is_active: boolean;
   version: number;
   created_at: string;
   updated_at: string;
@@ -56,15 +58,94 @@ export const getTenantBySlug = async (slug: string) => (await q<Tenant>(`select 
 export const listTenants = () => q<Tenant>(`select id, slug, name from tenants order by created_at`);
 
 // --- agents ---
-export async function upsertAgentFromProfile(tenantId: string, p: BusinessProfile): Promise<AgentRow | undefined> {
-  await q(
-    `insert into agents (tenant_id, profile_id, name, persona, tool_guide, knowledge_base, style_extra, enabled_tools)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)
-     on conflict (tenant_id, profile_id) do nothing`,
-    [tenantId, p.id, p.label, p.persona, p.toolGuide, p.knowledgeBase, p.styleExtra ?? null, p.tools.map((t) => t.name)],
-  );
-  return getAgent(tenantId, p.id);
+/**
+ * seed agent ทุกโปรไฟล์จากโค้ดเข้า DB ครั้งแรก (on conflict do nothing)
+ * หลังจากนั้น console เป็นเจ้าของข้อมูล — แก้/เพิ่ม/ลบใน console โค้ดจะไม่ทับ
+ */
+export async function seedAgents(tenantId: string, profiles: BusinessProfile[]): Promise<void> {
+  for (const p of profiles) {
+    await q(
+      `insert into agents (tenant_id, profile_id, name, persona, tool_guide, knowledge_base, style_extra, enabled_tools)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (tenant_id, profile_id) do nothing`,
+      [
+        tenantId,
+        p.id,
+        p.label,
+        p.persona,
+        p.toolGuide,
+        p.knowledgeBase,
+        p.styleExtra ?? null,
+        toolsFor(p).map((t) => t.name),
+      ],
+    );
+  }
 }
+
+/** agent ที่ใช้งานอยู่ของ tenant (ตัวที่รับสาย/แชท) */
+export const getActiveAgentRow = async (tenantId: string) =>
+  (await q<AgentRow>(`select * from agents where tenant_id=$1 and is_active limit 1`, [tenantId]))?.[0];
+
+/**
+ * ตั้ง agent ที่ใช้งาน — ปิดตัวอื่นทั้งหมดใน tenant เดียวกัน
+ * ทำใน transaction เพราะ unique index อนุญาตให้มี is_active=true ได้ตัวเดียวต่อ tenant
+ */
+export async function setActiveAgent(tenantId: string, agentId: string): Promise<AgentRow | undefined> {
+  const p = getPool();
+  if (!p) return undefined;
+  const client = await p.connect();
+  try {
+    await client.query('begin');
+    await client.query(`update agents set is_active=false where tenant_id=$1 and is_active`, [tenantId]);
+    const r = await client.query(
+      `update agents set is_active=true, updated_at=now() where id=$1 and tenant_id=$2 returning *`,
+      [agentId, tenantId],
+    );
+    await client.query('commit');
+    return r.rows[0] as AgentRow | undefined;
+  } catch (err) {
+    await client.query('rollback').catch(() => undefined);
+    console.error('[db]', (err as Error).message);
+    return undefined;
+  } finally {
+    client.release();
+  }
+}
+
+/** สร้าง agent ใหม่จาก console (ไม่ต้องมีโปรไฟล์ในโค้ด) */
+export async function createAgent(a: {
+  tenantId: string;
+  profileId?: string;
+  name: string;
+  persona?: string;
+  toolGuide?: string;
+  knowledgeBase?: string;
+  styleExtra?: string;
+  voice?: string;
+  enabledTools?: string[];
+}): Promise<AgentRow | undefined> {
+  const profileId = (a.profileId?.trim() || `custom-${Date.now().toString(36)}`).toLowerCase();
+  return (
+    await q<AgentRow>(
+      `insert into agents (tenant_id, profile_id, name, persona, tool_guide, knowledge_base, style_extra, voice, enabled_tools)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       returning *`,
+      [
+        a.tenantId,
+        profileId,
+        a.name.trim(),
+        a.persona ?? null,
+        a.toolGuide ?? null,
+        a.knowledgeBase ?? null,
+        a.styleExtra ?? null,
+        a.voice ?? null,
+        a.enabledTools ?? [],
+      ],
+    )
+  )?.[0];
+}
+
+export const deleteAgent = (id: string) => q(`delete from agents where id=$1`, [id]);
 
 export const getAgent = async (tenantId: string, profileId: string) =>
   (await q<AgentRow>(`select * from agents where tenant_id=$1 and profile_id=$2`, [tenantId, profileId]))?.[0];

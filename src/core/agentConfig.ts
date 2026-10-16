@@ -1,12 +1,12 @@
 import type { FunctionDeclaration } from '@google/genai';
-import { getActiveProfile } from '../profiles/index.js';
+import { allProfiles, getActiveProfile } from '../profiles/index.js';
 import type { BusinessProfile } from '../profiles/types.js';
 import { buildSystemPrompt } from '../prompt.js';
-import { toolsFor } from '../tools.js';
+import { toolsFor, toolsFromNames } from '../tools.js';
 import * as store from './store.js';
 import type { AgentRow } from './store.js';
 
-/** บริบทที่พร้อมใช้ของ agent 1 ตัว (resolve จาก DB ก่อน ถ้าไม่มีค่อยใช้โปรไฟล์ในโค้ด) */
+/** บริบทที่พร้อมใช้ของ agent 1 ตัว (resolve จาก DB ที่ตั้งค่าใน console ก่อน ถ้าไม่มีค่อยใช้โปรไฟล์ในโค้ด) */
 export interface ResolvedAgent {
   tenantId?: string;
   agentId?: string;
@@ -25,7 +25,7 @@ let inflight: Promise<ResolvedAgent> | undefined;
 
 /**
  * คืน agent ที่ใช้งานอยู่ (cache สั้น ๆ ให้ console แก้แล้วมีผลภายใน ~1 นาที)
- * ลำดับความสำคัญ: แถวใน DB (แก้จาก console) -> โปรไฟล์ในโค้ด (src/profiles)
+ * ลำดับความสำคัญ: agent ที่ตั้ง "ใช้งาน" ไว้ใน console (DB) -> โปรไฟล์ในโค้ด (AGENT_PROFILE)
  */
 export function getActiveAgent(): Promise<ResolvedAgent> {
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return Promise.resolve(cached.value);
@@ -40,48 +40,58 @@ export function getActiveAgent(): Promise<ResolvedAgent> {
   return inflight;
 }
 
-/** ล้าง cache — เรียกหลัง console แก้ agent เพื่อให้มีผลทันที */
+/** ล้าง cache — เรียกหลัง console แก้/สลับ agent เพื่อให้มีผลทันที */
 export function invalidateActiveAgent() {
   cached = undefined;
 }
 
 async function resolve(): Promise<ResolvedAgent> {
   const slug = process.env.TENANT_SLUG?.trim() || 'aileo';
-  const base = getActiveProfile();
+  const envProfile = getActiveProfile();
+  const byId = new Map(allProfiles().map((p) => [p.id, p]));
 
   const tenant = await store.ensureTenant(slug, process.env.TENANT_NAME?.trim() || 'AILEO');
-  let profile = base;
-  let agentId: string | undefined;
-  let voice: string | undefined;
-  let model: string | undefined;
+  let row: AgentRow | undefined;
 
   if (tenant) {
-    const row = await store.upsertAgentFromProfile(tenant.id, base);
-    if (row) {
-      agentId = row.id;
-      profile = profileFromRow(row, base);
-      voice = row.voice ?? undefined;
-      model = row.model ?? undefined;
+    // seed โปรไฟล์ทุกตัวจากโค้ดครั้งแรก เพื่อให้ console เลือก/แก้ได้ (ไม่ทับของเดิม)
+    await store.seedAgents(tenant.id, [...byId.values()]);
+    row = await store.getActiveAgentRow(tenant.id);
+    if (!row) {
+      // ยังไม่มีตัวไหนถูกตั้งเป็น "ใช้งาน" -> ใช้โปรไฟล์จาก AGENT_PROFILE เป็นค่าเริ่มต้น
+      const first = await store.getAgent(tenant.id, envProfile.id);
+      if (first) row = await store.setActiveAgent(tenant.id, first.id);
     }
   }
 
+  // โปรไฟล์ในโค้ดที่ตรงกับ agent นี้ ใช้เป็นค่าสำรองเฉพาะ field ที่ว่างใน DB
+  const codeProfile = (row && byId.get(row.profile_id)) || envProfile;
+  const profile = row ? profileFromRow(row, codeProfile) : envProfile;
+
   return {
     tenantId: tenant?.id,
-    agentId,
-    profileId: base.id,
+    agentId: row?.id,
+    profileId: row?.profile_id ?? envProfile.id,
     name: profile.label,
     profile,
     systemPrompt: buildSystemPrompt(profile),
-    tools: toolsFor(profile),
-    voice: process.env.VOICE?.trim() || voice || 'Zephyr',
-    model: process.env.GEMINI_MODEL?.trim() || model || 'gemini-3.8-live',
+    tools: row ? toolsForRow(row, codeProfile) : toolsFor(envProfile),
+    voice: process.env.VOICE?.trim() || row?.voice || 'Zephyr',
+    model: process.env.GEMINI_MODEL?.trim() || row?.model || 'gemini-3.8-live',
   };
+}
+
+/**
+ * เครื่องมือของ agent — ใช้ enabled_tools ที่ตั้งใน console เป็นหลัก
+ * ถ้าว่าง (agent รุ่นเก่า/ยังไม่ตั้ง) ใช้เครื่องมือทั้งหมดของโปรไฟล์นั้น
+ */
+function toolsForRow(row: AgentRow, codeProfile: BusinessProfile): FunctionDeclaration[] {
+  const names = row.enabled_tools ?? [];
+  return names.length ? toolsFromNames(names) : toolsFor(codeProfile);
 }
 
 /** ประกอบ BusinessProfile จากแถวใน DB โดย field ที่ว่างให้ใช้ค่าจากโปรไฟล์ในโค้ด */
 function profileFromRow(row: AgentRow, fallback: BusinessProfile): BusinessProfile {
-  const enabled = row.enabled_tools ?? [];
-  const tools = enabled.length ? fallback.tools.filter((t) => t.name && enabled.includes(t.name)) : fallback.tools;
   return {
     ...fallback,
     label: row.name || fallback.label,
@@ -89,6 +99,5 @@ function profileFromRow(row: AgentRow, fallback: BusinessProfile): BusinessProfi
     toolGuide: row.tool_guide ?? fallback.toolGuide,
     knowledgeBase: row.knowledge_base ?? fallback.knowledgeBase,
     styleExtra: row.style_extra ?? fallback.styleExtra,
-    tools,
   };
 }
