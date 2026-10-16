@@ -19,17 +19,22 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
     return v ? { [name]: v } : {};
   };
 
+  // อ่าน body เฉพาะ method ที่มี body — และถ้าว่างให้ส่งไปโดยไม่มี content-type
+  // (ไม่เช่นนั้น Fastify จะพยายาม JSON.parse('') แล้วตอบ 500 เช่นตอน DELETE)
+  const body = req.method === 'GET' || req.method === 'HEAD' ? '' : await req.text();
+  const headers: Record<string, string> = {
+    ...pass('cookie'),
+    ...pass('x-forwarded-for'),
+    ...pass('x-real-ip'),
+    ...SERVER_AUTH,
+  };
+  if (body) headers['content-type'] = req.headers.get('content-type') ?? 'application/json';
+
   try {
     const upstream = await fetch(target, {
       method: req.method,
-      headers: {
-        'content-type': req.headers.get('content-type') ?? 'application/json',
-        ...pass('cookie'),
-        ...pass('x-forwarded-for'),
-        ...pass('x-real-ip'),
-        ...SERVER_AUTH,
-      },
-      body: req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.text(),
+      headers,
+      body: body || undefined,
       cache: 'no-store',
     });
     const res = new Response(await upstream.text(), {

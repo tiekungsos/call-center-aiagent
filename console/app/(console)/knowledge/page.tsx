@@ -174,7 +174,9 @@ export default function KnowledgePage() {
             </button>
           </div>
           {hits === null ? (
-            <p className="muted">ลองค้นดูก่อนใช้งานจริง — ผลที่ได้คือสิ่งที่ AI จะเห็นในขอบเขตที่เลือก</p>
+            <p className="muted">
+              เลือก agent เพื่อจำลองว่าตอนสายจริง AI จะเห็นอะไร — ไม่เลือก = ค้นทั้งคลัง (สำหรับตรวจสอบ)
+            </p>
           ) : hits.length === 0 ? (
             <p className="muted">ไม่พบข้อมูลที่ใกล้เคียง</p>
           ) : (
