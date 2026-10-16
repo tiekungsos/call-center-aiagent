@@ -7,7 +7,15 @@ import { GoogleGenAI } from '@google/genai';
  *   ที่ได้ข้อความไทยเพี้ยน)
  */
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const MODEL = process.env.VISION_MODEL ?? 'gemini-3.5-flash';
+
+/** ลำดับโมเดลที่ลอง — ตัวแรกคือค่าที่ตั้งไว้ แล้วไล่ fallback เมื่อโมเดลปลายทางไม่ว่าง (503/429) */
+const DEFAULT_MODELS = ['gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash'];
+const MODELS = (process.env.VISION_MODEL?.trim() ? process.env.VISION_MODEL.split(',') : DEFAULT_MODELS)
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+/** error ที่ "ลองใหม่ได้" (โมเดลไม่ว่าง/rate limit/เซิร์ฟเวอร์สะดุด) */
+const retryable = (msg: string) => /UNAVAILABLE|RESOURCE_EXHAUSTED|"code":(429|500|503)|high demand|overloaded/i.test(msg);
 
 export type DocKind = 'text' | 'pdf' | 'image';
 
@@ -45,20 +53,23 @@ export async function extractText(buf: Buffer, mime: string, kind: DocKind): Pro
   }
 
   const mimeType = kind === 'pdf' ? 'application/pdf' : mime || 'image/jpeg';
-  try {
-    const res = await ai.models.generateContent({
-      model: MODEL,
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: PROMPTS[kind] }, { inlineData: { mimeType, data: buf.toString('base64') } }],
-        },
-      ],
-    });
-    const text = (res.text ?? '').replace(/\u0000/g, '').trim();
-    return text || undefined;
-  } catch (err) {
-    console.error('[extract]', (err as Error).message);
-    return undefined;
+  const parts = [{ text: PROMPTS[kind] }, { inlineData: { mimeType, data: buf.toString('base64') } }];
+
+  // ลองทีละโมเดล (แต่ละตัวลองซ้ำ 1 ครั้ง) — โมเดล vision มักเจอ 503 ช่วงคนใช้เยอะ
+  for (const model of MODELS) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await ai.models.generateContent({ model, contents: [{ role: 'user', parts }] });
+        const text = (res.text ?? '').replace(/\u0000/g, '').trim();
+        if (text) return text;
+        break; // โมเดลตอบแต่ไม่มีข้อความ -> ลองโมเดลถัดไป
+      } catch (err) {
+        const msg = (err as Error).message;
+        console.error(`[extract] ${model} (ครั้งที่ ${attempt + 1}):`, msg);
+        if (!retryable(msg)) return undefined; // error ถาวร (เช่น 400/404) ไม่ต้องลองต่อ
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 1200));
+      }
+    }
   }
+  return undefined;
 }
