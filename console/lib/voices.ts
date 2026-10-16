@@ -56,3 +56,9 @@ export const voiceLabel = (name: string): string => {
   const v = VOICES.find((x) => x.name === name);
   return v ? `${v.name} — ${v.tone}, ${v.pitch}` : name;
 };
+
+/** ตัวอย่างเสียงจาก AI Studio — ใช้ชื่อเสียงตามด้วย .wav (ทดสอบแล้วว่ามีครบทั้ง 30 เสียง) */
+export const voiceSampleUrl = (name: string) => `https://www.gstatic.com/aistudio/voices/samples/${name}.wav`;
+
+/** ชื่อเสียงนี้เป็นเสียงที่ระบบรู้จักไหม (ไม่รู้จัก = ไม่มีตัวอย่างให้ฟัง) */
+export const isKnownVoice = (name: string) => VOICES.some((v) => v.name === name);

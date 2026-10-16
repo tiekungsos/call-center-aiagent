@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiSend, CLIENT_API, TENANT } from '@/lib/api';
 import { VOICES, GENDER_LABEL, voiceGender, voicesOf, type Gender } from '@/lib/voices';
+import { VoiceSampleButton } from '@/components/VoiceSampleButton';
 
 interface Agent {
   id: string;
@@ -299,29 +300,35 @@ export default function AgentsPage() {
 
             <label>
               เสียง
-              <select value={draft.voice ?? ''} onChange={(e) => set('voice', e.target.value)}>
-                <option value="">ค่าเริ่มต้นของระบบ ({defaults?.voice ?? '…'})</option>
-                <optgroup label="เสียงหญิง (14)">
-                  {voicesOf('female').map((v) => (
-                    <option key={v.name} value={v.name}>
-                      {v.name} — {v.tone}, {v.pitch}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="เสียงชาย (16)">
-                  {voicesOf('male').map((v) => (
-                    <option key={v.name} value={v.name}>
-                      {v.name} — {v.tone}, {v.pitch}
-                    </option>
-                  ))}
-                </optgroup>
-                {draft.voice && !VOICES.some((v) => v.name === draft.voice) ? (
-                  <option value={draft.voice}>{draft.voice} (กำหนดเอง)</option>
-                ) : null}
-              </select>
+              <span className="row" style={{ gap: 8, alignItems: 'center' }}>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <select value={draft.voice ?? ''} onChange={(e) => set('voice', e.target.value)}>
+                    <option value="">ค่าเริ่มต้นของระบบ ({defaults?.voice ?? '…'})</option>
+                    <optgroup label="เสียงหญิง (14)">
+                      {voicesOf('female').map((v) => (
+                        <option key={v.name} value={v.name}>
+                          {v.name} — {v.tone}, {v.pitch}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="เสียงชาย (16)">
+                      {voicesOf('male').map((v) => (
+                        <option key={v.name} value={v.name}>
+                          {v.name} — {v.tone}, {v.pitch}
+                        </option>
+                      ))}
+                    </optgroup>
+                    {draft.voice && !VOICES.some((v) => v.name === draft.voice) ? (
+                      <option value={draft.voice}>{draft.voice} (กำหนดเอง)</option>
+                    ) : null}
+                  </select>
+                </span>
+                <VoiceSampleButton voice={effVoice} />
+              </span>
               <span className="row wrap" style={{ gap: 6, fontWeight: 400 }}>
                 <span className="dim" style={{ fontSize: 11 }}>
-                  ใช้จริง: <span className="mono">{draft.voice || defaults?.voice || '—'}</span> (มีผลกับสายใหม่)
+                  ใช้จริง: <span className="mono">{draft.voice || defaults?.voice || '—'}</span> (มีผลกับสายใหม่) ·
+                  เลือกเสียงแล้วกด “ฟังตัวอย่าง” เพื่อเทียบเสียง
                 </span>
                 {voiceMismatch ? (
                   <span className="chip warn">
