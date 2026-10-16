@@ -74,7 +74,7 @@ npm run typecheck      # ตรวจ type
 
 - bridge ฟังเฉพาะ `127.0.0.1` เป็นค่าเริ่มต้น (Asterisk อยู่เครื่องเดียวกัน, Twilio เข้าผ่าน reverse proxy) เปลี่ยนได้ด้วย `BIND_HOST`
 - env ที่ใช้: `GEMINI_API_KEY`, `GEMINI_MODEL`, `VOICE`, `AGENT_PROFILE`, `BUSINESS_NAME`, `PORT`, `AUDIOSOCKET_PORT`, `LOG_DIR`, `PUBLIC_HOST`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `OFFICER_TRANSFER_NUMBER`, `EMERGENCY_TRANSFER_NUMBER`, `ASTERISK_BIND_IP`, `SIP_PASSWORD_1001/2001/2002`, `RECORD_CALLS`, `DEBUG_AUDIO` (คำอธิบายอยู่ใน `.env.example`)
-- env ที่เพิ่มในเฟสถัดไป: `DATABASE_URL`, `POSTGRES_*`, `API_PORT`, `API_TOKEN`, `TENANT_SLUG`, `TENANT_NAME`, `AGENT_CACHE_TTL_MS` (P0/P4) · `CHAT_MODEL`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (P2) · `AMI_*`, `OUTBOUND_TRUNK`, `CAMPAIGN_BATCH` (P5) · `SCREENPOP_URL` (P6) · `CONSOLE_PORT` (P3) · `DEEPINFRA_API_KEY`, `DEEPINFRA_BASE_URL`, `ANALYTICS_MODEL` (P4 analytics)
+- env ที่เพิ่มในเฟสถัดไป: `DATABASE_URL`, `POSTGRES_*`, `API_PORT`, `API_TOKEN`, `TENANT_SLUG`, `TENANT_NAME`, `AGENT_CACHE_TTL_MS` (P0/P4) · `CHAT_MODEL`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (P2) · `AMI_*`, `OUTBOUND_TRUNK`, `CAMPAIGN_BATCH` (P5) · `SCREENPOP_URL` (P6) · `CONSOLE_PORT`, `CONSOLE_SESSION_SECRET`, `CONSOLE_ADMIN_USER`, `CONSOLE_ADMIN_PASSWORD`, `CONSOLE_SESSION_TTL_HOURS`, `CONSOLE_LOGIN_MAX_ATTEMPTS`, `CONSOLE_LOGIN_WINDOW_MINUTES` (P3) · `DEEPINFRA_API_KEY`, `DEEPINFRA_BASE_URL`, `ANALYTICS_MODEL` (P4 analytics)
 
 ## Postgres + REST API (P0)
 เก็บ `calls` / `turns` / tool calls / `tickets` / latency ลง Postgres และเปิด REST API ให้ console (P3) กับ analytics (P4) ใช้ต่อ
@@ -89,7 +89,7 @@ docker compose up -d postgres
 - tenant/agent ถูก seed จากโปรไฟล์ในโค้ดครั้งแรกที่ boot แล้วเก็บใน DB — แก้ทีหลังจาก console ผ่าน `PATCH /api/agents/:id` (มีผลกับสายใหม่ภายใน `AGENT_CACHE_TTL_MS`)
 - ออกแบบ **multi-tenant** (`tenant_id` ทุกตาราง) แต่รันลูกค้าเดียวผ่าน `TENANT_SLUG`
 
-ตาราง: `tenants`, `agents`, `calls`, `turns`, `tool_calls`, `turn_metrics`, `tickets`, `contacts`, `knowledge_documents`
+ตาราง: `tenants`, `agents`, `calls`, `turns`, `tool_calls`, `turn_metrics`, `tickets`, `contacts`, `knowledge_documents`, `campaigns`, `campaign_targets`, `webhooks`, `console_users`
 
 REST API (พอร์ต `API_PORT`, default 8090):
 - API **ไม่เปิด CORS** และถ้าตั้ง `API_TOKEN` จะบังคับ header `x-api-key` ทุกเส้นทาง `/api/*` — console เรียกผ่าน proxy ฝั่ง server (`console/app/api/[...path]`) จึงแนบ token ให้เองและ browser ไม่เคยเห็น token
@@ -118,6 +118,7 @@ cd console && npm install && npm run dev   # http://127.0.0.1:3000
 
 | หน้า | หน้าที่ |
 |---|---|
+| `/login` | เข้าสู่ระบบ (ต้องมี session ก่อนถึงจะเข้า Console ได้ทุกหน้า) |
 | `/` | ภาพรวม: จำนวนสาย, latency เฉลี่ย, heatmap ช่วงเวลายุ่ง, ความต้องการที่พบบ่อย, อารมณ์ผู้ติดต่อ, สายล่าสุด |
 | `/calls`, `/calls/[id]` | รายการสาย + transcript เต็ม, tool calls, latency, สรุป/ความต้องการ/อารมณ์ |
 | `/tickets` | เรื่องร้องเรียนที่ AI เปิดไว้ให้ติดต่อกลับ |
@@ -125,9 +126,29 @@ cd console && npm install && npm run dev   # http://127.0.0.1:3000
 | `/knowledge` | อัปโหลดเอกสารเข้า RAG + ทดสอบค้นหา + ลบ |
 | `/campaigns` | สร้างแคมเปญโทรออก, สั่งเริ่ม, ดูผลรายเบอร์ |
 | `/settings` | webhook ไป CRM/ERP (+ ค่า `SCREENPOP_URL` ฝั่ง bridge) |
+| `/users` | จัดการผู้ใช้ console (admin เท่านั้น): เพิ่ม/ปิดใช้/เปลี่ยนสิทธิ์/รีเซ็ตรหัสผ่าน/ลบ |
 
 Console เรียก API ผ่าน **proxy ของตัวเอง** (`app/api/[...path]/route.ts` → `API_URL`)
 จึงไม่ต้องเปิด CORS และ browser ไม่ต้องเข้าถึงพอร์ต 8090 ของ server โดยตรง
+
+### Login และการป้องกัน (P3)
+- ผู้ใช้เก็บในตาราง `console_users` (Postgres) — รหัสผ่านเก็บเป็น **scrypt** (`src/core/auth.ts`)
+- session = cookie `aileo_session` ที่เซ็น HMAC-SHA256 (HttpOnly, SameSite=Lax, `Secure` ตามค่าเริ่มต้น)
+  อายุตั้งได้ด้วย `CONSOLE_SESSION_TTL_HOURS` (default 12 ชม.)
+- `console/proxy.ts` กันทุกหน้าและ `/api/*` — ตรวจ session กับ `GET /api/auth/me` ของ bridge
+  (ปิด/ลบผู้ใช้จึงมีผลทันที) ถ้าไม่มี session จะ redirect ไป `/login` (ส่วน `/api/*` ตอบ 401 JSON)
+- จำกัดจำนวนครั้ง login ผิดต่อ IP: `CONSOLE_LOGIN_MAX_ATTEMPTS` ครั้ง ใน `CONSOLE_LOGIN_WINDOW_MINUTES` นาที (default 5 ครั้ง / 15 นาที)
+- ผู้ใช้ console คนแรก: ตั้ง `CONSOLE_ADMIN_USER` + `CONSOLE_ADMIN_PASSWORD` ใน `.env` แล้ว boot ครั้งเดียว
+  (ระบบจะสร้างให้เฉพาะตอนที่ยังไม่มีผู้ใช้เลย) หรือใช้หน้า `/users` หลังจากนั้น
+- **กัน bot**: `app/robots.ts` (`Disallow: /`), header `X-Robots-Tag: noindex, nofollow, noarchive`
+  และทุกเส้นทางต้อง login ก่อน — เสริมด้วยการบล็อก user-agent ของ bot ที่ nginx (ดู vhost ของ console)
+
+| Endpoint | หน้าที่ |
+|---|---|
+| `POST /api/auth/login` | เข้าสู่ระบบ → ตั้ง cookie session (จำกัดจำนวนครั้งต่อ IP) |
+| `POST /api/auth/logout` | ออกจากระบบ (ล้าง cookie) |
+| `GET /api/auth/me` | ผู้ใช้ปัจจุบันจาก cookie (ใช้โดย console proxy) |
+| `GET/POST/PATCH/DELETE /api/users` | จัดการผู้ใช้ console (admin เท่านั้น) |
 
 ## เฟสอื่น ๆ (P1, P2, P4, P5, P6)
 | เฟส | อะไร | จุดเริ่ม |

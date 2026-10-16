@@ -622,3 +622,39 @@ label {
     border-bottom: 1px solid var(--line);
   }
 }
+
+/* --- login --- */
+.login-wrap {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--panel);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  display: grid;
+  gap: 12px;
+  padding: 26px 24px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.login-card .btn {
+  margin-top: 4px;
+  justify-content: center;
+}
+
+.sidebar-foot .logout {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 7px;
+  margin-top: 2px;
+  padding: 7px 9px;
+  font-size: 12px;
+  font-weight: 600;
+}

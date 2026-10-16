@@ -1,9 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState } from 'react';
 import { TENANT } from '@/lib/api';
-import { IconAgent, IconBook, IconCalls, IconInbox, IconPulse, IconSend, IconSliders } from './icons';
+import {
+  IconAgent,
+  IconBook,
+  IconCalls,
+  IconInbox,
+  IconLogout,
+  IconPulse,
+  IconSend,
+  IconSliders,
+  IconUsers,
+} from './icons';
 
 const NAV = [
   { href: '/', label: 'ภาพรวม', icon: IconPulse },
@@ -15,19 +26,36 @@ const NAV = [
   { href: '/settings', label: 'เชื่อมต่อ', icon: IconSliders },
 ];
 
+const ADMIN_NAV = { href: '/users', label: 'ผู้ใช้', icon: IconUsers };
+
 export function Shell({
   children,
   dbOn,
   apiUp,
   apiUrl,
+  user,
 }: {
   children: React.ReactNode;
   dbOn: boolean;
   apiUp: boolean;
   apiUrl: string;
+  user?: { username: string; role: string };
 }) {
   const path = usePathname();
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
   const isActive = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
+  const settingsNav = user?.role === 'admin' ? [...NAV.slice(3), ADMIN_NAV] : NAV.slice(3);
+
+  async function logout() {
+    setBusy(true);
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } finally {
+      router.replace('/login');
+      router.refresh();
+    }
+  }
 
   return (
     <div className="shell">
@@ -53,7 +81,7 @@ export function Shell({
             </Link>
           ))}
           <span className="nav-label">ตั้งค่า</span>
-          {NAV.slice(3).map(({ href, label, icon: Icon }) => (
+          {settingsNav.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} data-active={isActive(href)}>
               <Icon aria-hidden />
               {label}
@@ -71,9 +99,16 @@ export function Shell({
             ฐานข้อมูล {dbOn ? 'เชื่อมต่อ' : 'ปิด'}
           </span>
           <span className="dim">tenant: {TENANT}</span>
-          <span className="dim" style={{ overflowWrap: 'anywhere' }}>
-            {apiUrl}
-          </span>
+          {user ? (
+            <button className="btn ghost logout" onClick={logout} disabled={busy} title={apiUrl}>
+              <IconLogout aria-hidden />
+              {busy ? 'กำลังออก…' : `ออกจากระบบ (${user.username})`}
+            </button>
+          ) : (
+            <span className="dim" style={{ overflowWrap: 'anywhere' }}>
+              {apiUrl}
+            </span>
+          )}
         </div>
       </aside>
       <main className="main">{children}</main>

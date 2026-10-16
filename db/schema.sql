@@ -151,6 +151,19 @@ create table if not exists campaign_targets (
 );
 create index if not exists campaign_targets_campaign_idx on campaign_targets (campaign_id, status);
 
+-- ผู้ใช้ console (login เข้า dashboard) — แยกจากผู้ติดต่อของ tenant
+-- password_hash = scrypt (รูปแบบ scrypt$N$r$p$salt$hash) ดู src/core/auth.ts
+create table if not exists console_users (
+  id            uuid primary key default gen_random_uuid(),
+  username      text unique not null,
+  name          text,
+  password_hash text not null,
+  role          text not null default 'admin',   -- admin | viewer
+  disabled      boolean not null default false,
+  last_login_at timestamptz,
+  created_at    timestamptz not null default now()
+);
+
 -- P6: webhook ขาออกไป CRM/ERP (แจ้ง event ต่อ tenant)
 create table if not exists webhooks (
   id         uuid primary key default gen_random_uuid(),

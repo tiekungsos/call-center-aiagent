@@ -4,6 +4,7 @@ import { WebSocketServer } from 'ws';
 import { buildApi } from './api.js';
 import { startAudioSocketServer, takeNextAction } from './audiosocket.js';
 import { getActiveAgent } from './core/agentConfig.js';
+import { seedConsoleAdmin } from './core/auth.js';
 import { migrate } from './db.js';
 import { handleTwilio } from './twilio.js';
 
@@ -15,6 +16,7 @@ const LOCAL = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 
 // เตรียม DB (ถ้าตั้ง DATABASE_URL) + resolve agent (seed tenant/agent ให้ครั้งแรก)
 const hasDb = await migrate();
+if (hasDb) await seedConsoleAdmin();
 const agent = await getActiveAgent();
 console.log(`[profile] ${agent.profileId} (${agent.name}) tenant=${agent.tenantId ?? '-'} db=${hasDb ? 'on' : 'off'}`);
 

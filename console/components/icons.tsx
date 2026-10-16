@@ -72,3 +72,18 @@ export const IconCheck = (p: SVGProps<SVGSVGElement>) => (
     <path d="M5 12.5 9.5 17 19 7" />
   </svg>
 );
+
+export const IconUsers = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <circle cx="9" cy="8.5" r="3" />
+    <path d="M3.5 19.5a5.5 5.5 0 0 1 11 0" />
+    <path d="M16.2 6.3a3 3 0 0 1 0 5.5M17.5 19.5a5.5 5.5 0 0 0-1.7-3.9" />
+  </svg>
+);
+
+export const IconLogout = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M14.5 5.5v-1A1.5 1.5 0 0 0 13 3H5.5A1.5 1.5 0 0 0 4 4.5v15A1.5 1.5 0 0 0 5.5 21H13a1.5 1.5 0 0 0 1.5-1.5v-1" />
+    <path d="M10 12h10M17.5 8.5 21 12l-3.5 3.5" />
+  </svg>
+);

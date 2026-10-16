@@ -12,4 +12,17 @@ export default {
   env: {
     NEXT_PUBLIC_TENANT: process.env.NEXT_PUBLIC_TENANT ?? process.env.TENANT_SLUG ?? 'aileo',
   },
+  // console ภายใน — สั่ง search engine/bot ไม่ให้จัดทำดัชนี (คู่กับ app/robots.ts)
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive, nosnippet' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'same-origin' },
+        ],
+      },
+    ];
+  },
 };

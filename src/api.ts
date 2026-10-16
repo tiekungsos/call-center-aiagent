@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { WebSocketServer } from 'ws';
 import { handleLineWebhook, verifyLineSignature } from './chat/line.js';
 import { handleChatWs } from './chat/ws.js';
 import { invalidateActiveAgent } from './core/agentConfig.js';
 import { analyzeCall } from './core/analytics.js';
+import * as auth from './core/auth.js';
 import * as knowledge from './core/knowledge.js';
 import * as store from './core/store.js';
 import { dbEnabled } from './db.js';
@@ -24,11 +25,61 @@ type Body = {
   url?: string;
   events?: string[];
   secret?: string;
+  username?: string;
+  password?: string;
+  role?: string;
+  disabled?: boolean;
 };
 
 async function tenantOf(slug?: string) {
   const s = slug?.trim() || process.env.TENANT_SLUG?.trim() || 'aileo';
   return store.getTenantBySlug(s);
+}
+
+// --- auth console: session cookie + จำกัดจำนวนครั้ง login ผิด (ต่อ IP) ---
+const LOGIN_MAX = Math.max(1, Number(process.env.CONSOLE_LOGIN_MAX_ATTEMPTS ?? 5) || 5);
+const LOGIN_WINDOW_MS = Math.max(1, Number(process.env.CONSOLE_LOGIN_WINDOW_MINUTES ?? 15) || 15) * 60_000;
+const loginAttempts = new Map<string, { n: number; reset: number }>();
+
+/** IP จริงของผู้ใช้ — มาจาก X-Forwarded-For ที่ console proxy ส่งต่อ (หลัง nginx) */
+function clientIp(req: FastifyRequest): string {
+  const xff = req.headers['x-forwarded-for'];
+  const raw = Array.isArray(xff) ? xff[0] : xff;
+  return raw?.split(',')[0]?.trim() || (req.headers['x-real-ip'] as string | undefined) || req.ip || 'unknown';
+}
+
+function loginAllowed(ip: string): boolean {
+  const rec = loginAttempts.get(ip);
+  return !rec || rec.reset < Date.now() || rec.n < LOGIN_MAX;
+}
+
+function noteLoginFailure(ip: string): void {
+  if (loginAttempts.size > 5000) loginAttempts.clear(); // กันหน่วยความจำโต
+  const now = Date.now();
+  const rec = loginAttempts.get(ip);
+  if (!rec || rec.reset < now) loginAttempts.set(ip, { n: 1, reset: now + LOGIN_WINDOW_MS });
+  else rec.n += 1;
+}
+
+const sessionOf = (req: FastifyRequest) => auth.verifySession(auth.readCookie(req.headers.cookie));
+
+/** ต้องเป็น admin ที่ยังใช้งานได้ — ตอบ error เองถ้าไม่ผ่าน (คืน false) */
+async function requireAdmin(req: FastifyRequest, reply: FastifyReply): Promise<boolean> {
+  const s = sessionOf(req);
+  if (!s) {
+    reply.code(401).send({ error: 'unauthorized' });
+    return false;
+  }
+  const u = await auth.getUserById(s.uid);
+  if (!u || u.disabled) {
+    reply.code(401).send({ error: 'unauthorized' });
+    return false;
+  }
+  if (u.role !== 'admin') {
+    reply.code(403).send({ error: 'ต้องเป็นผู้ดูแลระบบ (admin)' });
+    return false;
+  }
+  return true;
 }
 
 /** REST API สำหรับ console (P3) และ analytics (P4) — แยกพอร์ตจาก telephony bridge */
@@ -63,6 +114,92 @@ export function buildApi() {
   });
 
   app.get('/health', async () => ({ ok: true, db: dbEnabled() }));
+
+  // --- login เข้า console ---
+  app.post<{ Body: Body }>('/api/auth/login', async (req, reply) => {
+    if (!auth.authReady()) {
+      return reply.code(503).send({ error: 'ฝั่ง bridge ยังไม่ได้ตั้ง CONSOLE_SESSION_SECRET (อย่างน้อย 16 ตัวอักษร)' });
+    }
+    const ip = clientIp(req);
+    if (!loginAllowed(ip)) {
+      return reply.code(429).send({ error: 'พยายามเข้าสู่ระบบหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่' });
+    }
+    const username = req.body?.username?.trim() ?? '';
+    const password = req.body?.password ?? '';
+    if (!username || !password) return reply.code(400).send({ error: 'กรอกชื่อผู้ใช้และรหัสผ่าน' });
+
+    const user = await auth.getUserByUsername(username);
+    if (!user || user.disabled || !auth.verifyPassword(password, user.password_hash)) {
+      noteLoginFailure(ip);
+      return reply.code(401).send({ error: 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง' });
+    }
+    loginAttempts.delete(ip);
+    await auth.touchLastLogin(user.id);
+    reply.header('set-cookie', auth.sessionCookie(auth.signSession(user)));
+    const { password_hash: _hash, ...safe } = user;
+    return { user: safe };
+  });
+
+  app.post('/api/auth/logout', async (_req, reply) => {
+    reply.header('set-cookie', auth.clearSessionCookie());
+    return { ok: true };
+  });
+
+  app.get('/api/auth/me', async (req, reply) => {
+    const s = sessionOf(req);
+    if (!s) return reply.code(401).send({ error: 'unauthorized' });
+    const user = await auth.getUserById(s.uid);
+    if (!user || user.disabled) return reply.code(401).send({ error: 'unauthorized' });
+    const { password_hash: _hash, ...safe } = user;
+    return { user: safe };
+  });
+
+  // --- จัดการผู้ใช้ console (admin เท่านั้น) ---
+  app.get('/api/users', async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return { users: (await auth.listUsers()) ?? [] };
+  });
+
+  app.post<{ Body: Body }>('/api/users', async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const username = req.body?.username?.trim();
+    const password = req.body?.password ?? '';
+    if (!username) return reply.code(400).send({ error: 'ต้องระบุชื่อผู้ใช้' });
+    if (password.length < 8) return reply.code(400).send({ error: 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร' });
+    const user = await auth.createUser({ username, name: req.body?.name, password, role: req.body?.role });
+    if (!user) return reply.code(409).send({ error: 'ชื่อผู้ใช้นี้มีอยู่แล้ว' });
+    return { user };
+  });
+
+  app.patch<{ Params: { id: string }; Body: Body }>('/api/users/:id', async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const patch = req.body ?? {};
+    if (patch.password !== undefined && patch.password.length < 8) {
+      return reply.code(400).send({ error: 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร' });
+    }
+    const target = await auth.getUserById(req.params.id);
+    if (!target) return reply.code(404).send({ error: 'not found' });
+    // ถ้ากำลังปิด/ลดสิทธิ์ admin คนสุดท้าย จะทำให้ไม่มีใครเข้าได้อีก
+    const demoting = target.role === 'admin' && (patch.disabled === true || patch.role === 'viewer');
+    if (demoting && (await auth.wouldLockOut(target.id))) {
+      return reply.code(400).send({ error: 'ต้องมีผู้ดูแล (admin) ที่ใช้งานได้อย่างน้อย 1 คน' });
+    }
+    return { user: await auth.updateUser(target.id, patch) };
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/users/:id', async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    if (sessionOf(req)?.uid === req.params.id) {
+      return reply.code(400).send({ error: 'ลบบัญชีที่กำลังใช้งานอยู่ไม่ได้' });
+    }
+    const target = await auth.getUserById(req.params.id);
+    if (!target) return reply.code(404).send({ error: 'not found' });
+    if (target.role === 'admin' && (await auth.wouldLockOut(target.id))) {
+      return reply.code(400).send({ error: 'ต้องมีผู้ดูแล (admin) ที่ใช้งานได้อย่างน้อย 1 คน' });
+    }
+    await auth.deleteUser(target.id);
+    return { deleted: true };
+  });
 
   app.get('/api/tenants', async () => ({ tenants: (await store.listTenants()) ?? [] }));
 

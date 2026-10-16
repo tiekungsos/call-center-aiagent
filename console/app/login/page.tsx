@@ -1,0 +1,90 @@
+'use client';
+
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+
+function LoginForm() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const from = params.get('from') ?? '/';
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) throw new Error(data.error ?? `เข้าสู่ระบบไม่สำเร็จ (HTTP ${r.status})`);
+      router.replace(from.startsWith('/') ? from : '/');
+      router.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="login-card" onSubmit={submit}>
+      <div className="brand" style={{ marginBottom: 4 }}>
+        <span className="brand-mark" aria-hidden>
+          AI
+        </span>
+        <span>
+          <span className="brand-name">AILEO</span>
+          <span className="brand-sub" style={{ display: 'block' }}>
+            Console
+          </span>
+        </span>
+      </div>
+      <p className="muted" style={{ margin: '0 0 6px' }}>
+        เข้าสู่ระบบสำหรับผู้ดูแล — ระบบภายในเท่านั้น
+      </p>
+
+      {error ? <div className="banner err">{error}</div> : null}
+
+      <label>
+        ชื่อผู้ใช้
+        <input
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username"
+          autoFocus
+          required
+        />
+      </label>
+      <label>
+        รหัสผ่าน
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+          required
+        />
+      </label>
+
+      <button className="btn primary" type="submit" disabled={busy || !username || !password}>
+        {busy ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
+      </button>
+    </form>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <main className="login-wrap">
+      <Suspense fallback={<div className="login-card" />}>
+        <LoginForm />
+      </Suspense>
+    </main>
+  );
+}
