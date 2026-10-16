@@ -1,25 +1,20 @@
-import { GoogleGenAI } from '@google/genai';
-
 /**
  * ถอดข้อความจากไฟล์ที่อัปโหลด
  * - text/md/txt อ่านตรง ๆ (ไม่เสียค่า API)
- * - pdf/รูป ใช้ Gemini ซึ่งอ่านภาษาไทยได้แม่นและรองรับ PDF สแกน (ทดสอบแล้วเทียบกับตัวอ่าน PDF ทั่วไป
- *   ที่ได้ข้อความไทยเพี้ยน)
+ * - pdf/รูป ส่งให้ DeepInfra (OpenAI-compatible) ใช้ DEEPINFRA_API_KEY ตัวเดียวกับ embeddings/analytics
+ *
+ * ทดสอบกับ deepseek-ai/DeepSeek-V4.1-Flash แล้วว่าอ่านภาษาไทยได้ถูกต้อง
+ * โดย PDF ต้องส่งเป็น content type "file" (ส่งเป็น "image_url" จะถูกปฏิเสธ)
+ * ส่วนรูปส่งเป็น "image_url" แบบ data URL
  */
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-/** ลำดับโมเดลที่ลอง — ตัวแรกคือค่าที่ตั้งไว้ แล้วไล่ fallback เมื่อโมเดลปลายทางไม่ว่าง (503/429) */
-const DEFAULT_MODELS = ['gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-2.5-flash'];
-const MODELS = (process.env.VISION_MODEL?.trim() ? process.env.VISION_MODEL.split(',') : DEFAULT_MODELS)
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-/** error ที่ "ลองใหม่ได้" (โมเดลไม่ว่าง/rate limit/เซิร์ฟเวอร์สะดุด) */
-const retryable = (msg: string) => /UNAVAILABLE|RESOURCE_EXHAUSTED|"code":(429|500|503)|high demand|overloaded/i.test(msg);
+const API_KEY = process.env.DEEPINFRA_API_KEY;
+const BASE_URL = (process.env.DEEPINFRA_BASE_URL ?? 'https://api.deepinfra.com/v1/openai').replace(/\/+$/, '');
+const MODEL = process.env.VISION_MODEL ?? 'deepseek-ai/DeepSeek-V4.1-Flash';
+const TIMEOUT_MS = Number(process.env.VISION_TIMEOUT_MS ?? 120_000) || 120_000;
 
 export type DocKind = 'text' | 'pdf' | 'image';
 
-/** ขนาดสูงสุดที่ส่งให้ Gemini แบบ inline ได้ (limit ของ API อยู่ที่ ~20MB) */
+/** ขนาดสูงสุดที่ส่งให้โมเดลแบบ inline ได้ */
 export const MAX_FILE_BYTES = 15 * 1024 * 1024;
 
 const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i;
@@ -44,31 +39,54 @@ const PROMPTS: Record<Exclude<DocKind, 'text'>, string> = {
 ตอบเป็นข้อความธรรมดา ไม่ต้องจัดรูปแบบ`,
 };
 
+/** error ที่ "ลองใหม่ได้" (rate limit / เซิร์ฟเวอร์สะดุด) */
+const retryable = (msg: string) => /"code":(429|500|502|503)|rate ?limit|overloaded|timed? ?out|aborted|high demand/i.test(msg);
+
+type Part = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } } | { type: 'file'; file: { filename: string; file_data: string } };
+
+/** ประกอบ content ตามชนิดไฟล์ — PDF ต้องใช้ type "file" เท่านั้น */
+function parts(kind: Exclude<DocKind, 'text'>, mime: string, filename: string, buf: Buffer): Part[] {
+  const b64 = buf.toString('base64');
+  const prompt: Part = { type: 'text', text: PROMPTS[kind] };
+  if (kind === 'pdf') {
+    return [prompt, { type: 'file', file: { filename: filename || 'document.pdf', file_data: `data:application/pdf;base64,${b64}` } }];
+  }
+  return [prompt, { type: 'image_url', image_url: { url: `data:${mime || 'image/jpeg'};base64,${b64}` } }];
+}
+
 /** ถอดข้อความ — คืน undefined ถ้าล้มเหลว (ให้ผู้เรียกแจ้ง error เอง) */
-export async function extractText(buf: Buffer, mime: string, kind: DocKind): Promise<string | undefined> {
+export async function extractText(buf: Buffer, mime: string, kind: DocKind, filename = ''): Promise<string | undefined> {
   if (kind === 'text') {
     const text = buf.toString('utf8');
     // ไฟล์ไบนารีที่หลุดเข้ามาเป็น text จะมีอักขระควบคุมเยอะ — กันไม่ให้เข้า KB
     return /\u0000/.test(text) ? undefined : text;
   }
 
-  const mimeType = kind === 'pdf' ? 'application/pdf' : mime || 'image/jpeg';
-  const parts = [{ text: PROMPTS[kind] }, { inlineData: { mimeType, data: buf.toString('base64') } }];
+  if (!API_KEY) {
+    console.error('[extract] ไม่ได้ตั้ง DEEPINFRA_API_KEY');
+    return undefined;
+  }
 
-  // ลองทีละโมเดล (แต่ละตัวลองซ้ำ 1 ครั้ง) — โมเดล vision มักเจอ 503 ช่วงคนใช้เยอะ
-  for (const model of MODELS) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const res = await ai.models.generateContent({ model, contents: [{ role: 'user', parts }] });
-        const text = (res.text ?? '').replace(/\u0000/g, '').trim();
-        if (text) return text;
-        break; // โมเดลตอบแต่ไม่มีข้อความ -> ลองโมเดลถัดไป
-      } catch (err) {
-        const msg = (err as Error).message;
-        console.error(`[extract] ${model} (ครั้งที่ ${attempt + 1}):`, msg);
-        if (!retryable(msg)) return undefined; // error ถาวร (เช่น 400/404) ไม่ต้องลองต่อ
-        if (attempt === 0) await new Promise((r) => setTimeout(r, 1200));
-      }
+  const body = JSON.stringify({ model: MODEL, messages: [{ role: 'user', content: parts(kind, mime, filename, buf) }] });
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(`${BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
+        body,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 300)}`);
+      const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+      const text = (data.choices?.[0]?.message?.content ?? '').replace(/\u0000/g, '').trim();
+      if (text) return text;
+      return undefined; // ตอบมาแต่ไม่มีข้อความ — ลองใหม่ไม่ช่วย
+    } catch (err) {
+      const msg = (err as Error).message;
+      console.error(`[extract] ${MODEL} (ครั้งที่ ${attempt + 1}):`, msg);
+      if (!retryable(msg)) return undefined;
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 1500));
     }
   }
   return undefined;

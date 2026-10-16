@@ -68,7 +68,7 @@ export async function ingestFile(opts: {
   const mb = (n: number) => Math.round(n / 1024 / 1024);
   if (opts.buf.length > MAX_FILE_BYTES) return { error: `ไฟล์ใหญ่เกิน ${mb(MAX_FILE_BYTES)}MB` };
 
-  const text = await extractText(opts.buf, opts.mime, kind);
+  const text = await extractText(opts.buf, opts.mime, kind, opts.filename);
   if (!text) {
     return { error: kind === 'text' ? 'อ่านไฟล์ข้อความไม่ได้ (อาจเป็นไฟล์ไบนารี)' : 'ถอดข้อความจากไฟล์ไม่สำเร็จ' };
   }
