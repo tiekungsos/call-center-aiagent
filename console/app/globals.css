@@ -94,6 +94,7 @@ body {
   font-family: var(--sans);
   font-size: 14px;
   line-height: 1.6;
+  caret-color: var(--accent); /* เคอร์เซอร์เป็นหมึกคาร์บอน */
   -webkit-font-smoothing: antialiased;
 }
 
@@ -498,38 +499,72 @@ tbody tr:hover {
   color: var(--ink);
 }
 
-input,
-select,
-textarea {
+/* ช่องกรอกแบบ "ช่องว่างในแบบฟอร์ม" — เส้นใต้ ไม่มีพื้น ไม่มีมุม (ตามดีไซน์ระบบ watee)
+   สิ่งที่ผู้ใช้พิมพ์เป็นหมึกคาร์บอน */
+input:not([type='checkbox']):not([type='radio']),
+select {
   font: inherit;
   width: 100%;
-  padding: 8px 11px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line-2);
-  background: var(--surface);
-  color: var(--ink);
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  padding: 7px 0 6px;
+  border: 0;
+  border-bottom: 1.5px solid var(--line-2);
+  border-radius: 0;
+  background: transparent;
+  color: var(--accent-deep);
+  font-weight: 700;
+  transition: border-color 150ms var(--ease-paper), box-shadow 150ms var(--ease-paper);
+}
+
+/* ลูกศรของ select วาดเองให้เข้าชุดกับเส้นใต้ */
+select {
+  appearance: none;
+  padding-right: 18px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-3) 50%),
+    linear-gradient(135deg, var(--ink-3) 50%, transparent 50%);
+  background-position: right 4px center, right 9px center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
 }
 
 input::placeholder,
 textarea::placeholder {
   color: var(--ink-3);
+  font-weight: 400;
 }
 
-input:focus,
+input:not([type='checkbox']):not([type='radio']):focus,
 select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 1.5px 0 var(--accent); /* เส้นคู่ตอนโฟกัส */
 }
 
+/* ติ๊กถูกแบบสี่เหลี่ยมจัตุรัส (tick-box) */
+input[type='checkbox'],
+input[type='radio'] {
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border-radius: 2px;
+  border: 1.5px solid var(--line-2);
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex: none;
+}
+
+/* ข้อความยาว = ใบสำเนาคาร์บอน (มีพื้น มีมุม 3px) */
 textarea {
   resize: vertical;
   min-height: 90px;
-  font-family: var(--mono);
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--ink);
   font-size: 12.5px;
-  line-height: 1.55;
+  font-weight: 400;
+  line-height: 1.6;
 }
 
 label {
@@ -696,30 +731,191 @@ label {
   }
 }
 
-/* --- login --- */
-.login-wrap {
+/* --- login: ใบบันทึกรับสาย (call slip) บนโต๊ะ --- */
+.desk {
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: 32px 24px;
   background: var(--bg);
+  /* แสงจากหน้าต่างสาดลงโต๊ะ */
+  background-image: radial-gradient(120% 70% at 18% 0%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 62%);
 }
 
-.login-card {
+.slip-pad {
+  position: relative;
   width: 100%;
-  max-width: 360px;
-  display: grid;
-  gap: 12px;
-  padding: 28px 26px;
+  max-width: 396px;
+}
+
+/* ใบที่ซ้อนอยู่ใต้ (pad) */
+.slip-under {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius);
   background: var(--surface);
-  border: 0;
+  box-shadow: 0 1px 2px rgba(11, 18, 49, 0.08), 0 10px 24px -14px rgba(11, 18, 49, 0.25);
+  transform: translateY(6px) rotate(0.8deg);
+}
+.slip-under-2 {
+  transform: translateY(12px) rotate(1.6deg);
+}
+
+.slip {
+  position: relative;
+  display: grid;
+  gap: 15px;
+  padding: 26px 26px 0;
+  background: var(--surface);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
+  overflow: hidden;
+  animation: slip-land 520ms var(--ease-paper) both;
 }
 
-.login-card .btn {
-  margin-top: 4px;
+@keyframes slip-land {
+  from {
+    opacity: 0;
+    transform: translateY(64px) rotate(2.5deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slip {
+    animation: none;
+  }
+}
+
+.slip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 13px;
+  border-bottom: 3px double var(--line-2);
+}
+
+.slip-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.slip-name {
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.slip-sub {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+}
+
+.slip-serial {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--stamp); /* เลขใบบันทึกใช้ตรายางม่วง */
+  font-variant-numeric: tabular-nums;
+}
+
+.slip-note {
+  margin: -2px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.blank {
+  display: grid;
+  gap: 3px;
+}
+
+.blank-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+
+.slip .blank input {
+  font-size: 15px;
+  padding: 6px 0 7px;
+}
+
+.slip-submit {
+  height: 46px;
   justify-content: center;
+  margin-top: 2px;
+  font-weight: 700;
+  /* เงากระดาษใต้ปุ่ม (ไม่ใช่ glow) */
+  box-shadow: 0 1px 0 rgba(11, 18, 49, 0.3), 0 6px 14px -8px rgba(11, 18, 49, 0.45);
+}
+
+.slip-submit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* รอยปรุ + ส่วนฉีกทิ้ง */
+.slip-perf {
+  position: relative;
+  margin: 6px -26px 0;
+  border-top: 1.5px dashed var(--line-2);
+}
+
+.slip-perf::before,
+.slip-perf::after {
+  content: '';
+  position: absolute;
+  top: -7px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg); /* รอยบากที่ขอบกระดาษ */
+}
+.slip-perf::before {
+  left: -7px;
+}
+.slip-perf::after {
+  right: -7px;
+}
+
+.slip-stub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 -26px;
+  padding: 11px 26px 13px;
+  background: var(--panel); /* ใบสำเนาคาร์บอน */
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+
+.slip-host {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ตรายางขนาดเล็ก */
+.stamp-sm {
+  color: var(--stamp);
+  border: 1.5px solid var(--stamp);
+  border-radius: 4px;
+  padding: 2px 7px 3px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  opacity: 0.92;
 }
 
 .sidebar-foot .logout {
@@ -778,9 +974,3 @@ tr.row-link:hover td {
   align-items: center;
 }
 
-/* บนการ์ดสีขาว ไม่ต้องมีกล่องขาวรองตรา */
-.login-card .brand-mark {
-  background: transparent;
-  width: 26px;
-  height: 26px;
-}

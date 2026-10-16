@@ -81,7 +81,6 @@ export default function SettingsPage() {
                 <label key={e} className="row" style={{ gap: 6, fontWeight: 400, fontSize: 12.5 }}>
                   <input
                     type="checkbox"
-                    style={{ width: 'auto' }}
                     checked={events.includes(e)}
                     onChange={(ev) => setEvents((prev) => (ev.target.checked ? [...prev, e] : prev.filter((x) => x !== e)))}
                   />

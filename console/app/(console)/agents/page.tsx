@@ -302,7 +302,7 @@ export default function AgentsPage() {
                   const on = draft.enabled_tools.includes(t.name);
                   return (
                     <label key={t.name} className="tool-option" data-on={on}>
-                      <input type="checkbox" style={{ width: 'auto', marginTop: 3 }} checked={on} onChange={() => toggleTool(t.name)} />
+                      <input type="checkbox" style={{ marginTop: 3 }} checked={on} onChange={() => toggleTool(t.name)} />
                       <span>
                         <span className="row wrap" style={{ gap: 6, alignItems: 'center' }}>
                           <span className="mono" style={{ fontSize: 12.5, fontWeight: 600 }}>

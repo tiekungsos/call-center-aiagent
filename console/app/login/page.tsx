@@ -34,46 +34,55 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="login-wrap">
-      <form className="login-card" onSubmit={submit}>
-        <div className="brand" style={{ marginBottom: 4, padding: '0 0 2px' }}>
-          <span className="brand-mark" aria-hidden>
-            <WateeMark size={20} />
-          </span>
-          <span>
-            <span className="brand-name" style={{ color: 'var(--ink)' }}>
-              วาที
+    <main className="desk">
+      <div className="slip-pad">
+        <span className="slip-under slip-under-2" aria-hidden />
+        <span className="slip-under" aria-hidden />
+
+        <form className="slip" onSubmit={submit}>
+          <header className="slip-head">
+            <span className="slip-brand">
+              <WateeMark size={26} />
+              <span>
+                <span className="slip-name">วาที</span>
+                <span className="slip-sub">WATEE CONSOLE</span>
+              </span>
             </span>
-            <span className="brand-sub" style={{ display: 'block' }}>
-              WATEE Console
-            </span>
-          </span>
-        </div>
-        <p className="muted" style={{ margin: '0 0 6px' }}>
-          เข้าสู่ระบบสำหรับผู้ดูแล — ระบบภายในเท่านั้น
-        </p>
+            <span className="slip-serial">วท-01</span>
+          </header>
 
-        {error ? <div className="banner err">{error}</div> : null}
+          <p className="slip-note">ใบบันทึกการเข้าถึงระบบ — สำหรับผู้ดูแลเท่านั้น</p>
 
-        <label>
-          ชื่อผู้ใช้
-          <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus required />
-        </label>
-        <label>
-          รหัสผ่าน
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-            required
-          />
-        </label>
+          {error ? <div className="banner err">{error}</div> : null}
 
-        <button className="btn primary" type="submit" disabled={busy || !username || !password}>
-          {busy ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
-        </button>
-      </form>
+          <label className="blank">
+            <span className="blank-label">ชื่อผู้ใช้</span>
+            <input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus required />
+          </label>
+
+          <label className="blank">
+            <span className="blank-label">รหัสผ่าน</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </label>
+
+          <button className="btn primary slip-submit" type="submit" disabled={busy || !username || !password}>
+            {busy ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
+          </button>
+
+          <span className="slip-perf" aria-hidden />
+
+          <footer className="slip-stub">
+            <span className="stamp-sm">ระบบภายใน</span>
+            <span className="slip-host">console.watee.co</span>
+          </footer>
+        </form>
+      </div>
     </main>
   );
 }
