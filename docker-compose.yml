@@ -54,9 +54,12 @@ services:
       API_TOKEN: ${API_TOKEN:-}
       CONSOLE_PORT: ${CONSOLE_PORT:-3000}
       NEXT_PUBLIC_TENANT: ${TENANT_SLUG:-aileo}
+      # โฟลเดอร์ไฟล์บันทึกเสียง (อ่านอย่างเดียว) — ให้ปุ่มฟังเสียงในหน้า /calls ใช้ได้
+      RECORDINGS_DIR: /recordings
     volumes:
       - ./console:/app
       - console_node_modules:/app/node_modules
+      - ./recordings:/recordings:ro
     restart: unless-stopped
 
 volumes:

@@ -97,7 +97,18 @@ export default async function CallDetail({ params }: { params: Promise<{ id: str
             <dt>สิ้นสุด</dt>
             <dd>{fmtTime(call.ended_at)}</dd>
             <dt>บันทึกเสียง</dt>
-            <dd className="mono">{call.recording_path ?? '—'}</dd>
+            <dd>
+              {call.recording_path ? (
+                <div className="grid" style={{ gap: 5 }}>
+                  <audio controls preload="none" src={`/api/recording/${call.id}`} style={{ width: '100%', height: 34 }} />
+                  <span className="mono dim" style={{ fontSize: 10.5, overflowWrap: 'anywhere' }}>
+                    {call.recording_path}
+                  </span>
+                </div>
+              ) : (
+                <span className="dim">ไม่มีไฟล์บันทึกเสียง</span>
+              )}
+            </dd>
             <dt>latency เฉลี่ย</dt>
             <dd>{avg !== null ? `${avg} ms` : '—'}</dd>
           </dl>
