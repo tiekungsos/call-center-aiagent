@@ -28,6 +28,7 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // ทุกเส้นทาง ยกเว้นไฟล์ static ของ Next
-  matcher: ['/((?!_next/static|_next/image).*)'],
+  // ทุกเส้นทาง ยกเว้นไฟล์ static ของ Next และไฟล์ใน public (ฟอนต์/แบรนด์/ไอคอน)
+  // ไฟล์พวกนี้ไม่มีข้อมูล จึงไม่ต้องเสีย request ไปตรวจ session
+  matcher: ['/((?!_next/static|_next/image|fonts/|brand/|icon\\.svg|favicon\\.ico).*)'],
 };
