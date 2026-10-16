@@ -38,6 +38,10 @@ fi
 if echo "$changed" | grep -qE '^package(-lock)?\.json$'; then
   echo "[deploy] dependencies เปลี่ยน -> recreate bridge"
   docker compose up -d --force-recreate bridge
+elif echo "$changed" | grep -qE '^(src|db)/'; then
+  # อย่าพึ่ง tsx watch: inotify ไม่ส่ง event ข้าม bind mount ได้เสมอ (เจอแล้วว่าโค้ดใหม่ไม่ถูกโหลด)
+  echo "[deploy] src/db เปลี่ยน -> restart bridge ให้แน่นอน"
+  docker compose restart bridge
 else
   docker compose up -d bridge
 fi
