@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { q } from '../db.js';
@@ -158,7 +158,19 @@ export const listDocs = (tenantId: string, agentId: string) =>
     [tenantId, agentId],
   );
 
-export const removeDoc = (id: string) => q(`delete from knowledge_documents where id=$1`, [id]);
+/** ลบเอกสาร — ถ้าไม่มี chunk ไหนอ้างไฟล์ต้นฉบับนั้นแล้ว ให้ลบไฟล์ทิ้งด้วย (กันไฟล์ขยะค้าง) */
+export async function removeDoc(id: string): Promise<void> {
+  const rows = await q<{ storage_path: string | null }>(`delete from knowledge_documents where id=$1 returning storage_path`, [id]);
+  const path = rows?.[0]?.storage_path;
+  if (!path) return;
+  const others = await q<{ n: number }>(`select count(*)::int as n from knowledge_documents where storage_path=$1`, [path]);
+  if (Number(others?.[0]?.n ?? 0) > 0) return;
+  try {
+    rmSync(/* turbopackIgnore: true */ path, { force: true });
+  } catch (err) {
+    console.error('[upload] ลบไฟล์ต้นฉบับไม่ได้:', (err as Error).message);
+  }
+}
 
 export const countDocs = async (tenantId: string, agentId: string) =>
   (await q<{ n: string }>(`select count(*) as n from knowledge_documents where tenant_id=$1 and agent_id=$2`, [
