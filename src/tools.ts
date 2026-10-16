@@ -1,4 +1,5 @@
 import { Behavior, FunctionDeclaration, FunctionResponseScheduling, Type } from '@google/genai';
+import { goldPrice } from './core/goldprice.js';
 import * as knowledge from './core/knowledge.js';
 import type { CallLogger } from './logger.js';
 import type { BusinessProfile } from './profiles/types.js';
@@ -150,6 +151,15 @@ export const check_pawn_ticket: FunctionDeclaration = {
   },
 };
 
+/** ราคาทองคำ/เงินล่าสุด (ราคาสมาคมค้าทองคำ + ราคาตลาดโลก) */
+export const check_gold_price: FunctionDeclaration = {
+  name: 'check_gold_price',
+  description:
+    'ตรวจสอบราคาทองคำและเงินล่าสุด เช่น ราคาสมาคมค้าทองคำ ทองคำแท่ง 96.5% และ 99.99% รวมทั้งราคาตลาดโลก ใช้เมื่อผู้โทรถามราคาทองวันนี้',
+  behavior: Behavior.BLOCKING,
+  parameters: { type: Type.OBJECT, properties: {} },
+};
+
 /** รวมเครื่องมือกลาง + เครื่องมือเฉพาะของโปรไฟล์ */
 export const toolsFor = (profile: BusinessProfile): FunctionDeclaration[] => [...CORE_TOOLS, ...profile.tools];
 
@@ -161,6 +171,7 @@ export const ALL_TOOLS: FunctionDeclaration[] = [
   book_reservation,
   check_order,
   check_pawn_ticket,
+  check_gold_price,
 ];
 
 /**
@@ -268,6 +279,30 @@ export async function runTool(name: string, args: Record<string, unknown>, ctx: 
               results: [],
               instruction: 'ไม่พบข้อมูลในฐานความรู้ ให้บอกผู้โทรว่าไม่มีข้อมูล และเสนอโอนสายหรือเปิดเรื่องให้เจ้าหน้าที่ติดต่อกลับ',
             },
+      };
+    }
+
+    case 'check_gold_price': {
+      const quote = await goldPrice();
+      if (!quote) {
+        return {
+          response: {
+            status: 'unavailable',
+            instruction: 'ดึงราคาทองไม่สำเร็จ ให้บอกผู้โทรว่าเช็กราคาไม่ได้ตอนนี้ และเสนอให้เจ้าหน้าที่ตรวจสอบราคาให้',
+          },
+          scheduling: FunctionResponseScheduling.WHEN_IDLE,
+        };
+      }
+      return {
+        response: {
+          updated: quote.updated,
+          unit: 'บาท ต่อ 1 บาทน้ำหนักทองคำแท่ง',
+          prices: quote.prices.map((p) => `${p.label}: รับซื้อ ${p.buy ?? '-'} / ขายออก ${p.sell ?? '-'}`).join('\n'),
+          market: quote.market,
+          instruction:
+            'อ่านราคาเป็น "บาท" ต่อ 1 บาทน้ำหนักทองคำแท่ง และบอกเวลาที่อัปเดตด้วย. ราคาสมาคมค้าทองคำคือราคาประกาศอย่างเป็นทางการ ให้ใช้เป็นหลัก. ราคานี้เป็นราคาตลาด ไม่ใช่ราคารับจำนำของร้าน ห้ามประเมินยอดรับจำนำเอง ให้บอกว่าต้องให้เจ้าหน้าที่ประเมินที่หน้าร้านหรือส่งรูปมาให้ประเมิน',
+        },
+        scheduling: FunctionResponseScheduling.WHEN_IDLE,
       };
     }
 
