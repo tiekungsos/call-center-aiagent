@@ -36,7 +36,7 @@ export async function ingest(opts: {
 }): Promise<number> {
   let n = 0;
   for (const c of chunk(opts.content)) {
-    const vec = await embed(c);
+    const vec = await embed(c, 'document');
     if (!vec) continue;
     const rows = await q(
       `insert into knowledge_documents (tenant_id, agent_id, title, content, embedding)
@@ -53,7 +53,7 @@ export async function ingest(opts: {
  * agentId: ถ้าระบุ จะเห็นเอกสารของ agent นั้น + เอกสารที่ใช้ร่วม (agent_id is null)
  */
 export async function search(tenantId: string, query: string, k = 4, agentId?: string): Promise<KnowledgeHit[]> {
-  const vec = await embed(query);
+  const vec = await embed(query, 'search_query');
   if (!vec) return [];
   const literal = toVector(vec);
   const scope = agentId ? `and (agent_id is null or agent_id = $4)` : '';

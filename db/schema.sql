@@ -122,29 +122,29 @@ create table if not exists contacts (
   unique (tenant_id, phone)
 );
 
--- คลังความรู้ (P1: RAG) — chunk + embedding 1024 มิติ (DeepInfra BAAI/bge-m3)
+-- คลังความรู้ (P1: RAG) — chunk + embedding 768 มิติ (DeepInfra google/embeddinggemma-2)
 create table if not exists knowledge_documents (
   id         uuid primary key default gen_random_uuid(),
   tenant_id  uuid not null references tenants(id) on delete cascade,
   agent_id   uuid references agents(id) on delete cascade,
   title      text,
   content    text not null,
-  embedding  vector(1024),
+  embedding  vector(768),
   metadata   jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 -- สำหรับ DB ที่สร้างไว้ก่อนมี RAG
-alter table knowledge_documents add column if not exists embedding vector(1024);
+alter table knowledge_documents add column if not exists embedding vector(768);
 
--- ย้ายมิติ embedding: 768 (Gemini text-embedding-004) -> 1024 (DeepInfra BAAI/bge-m3)
--- ค่า embedding เดิมใช้กับโมเดลใหม่ไม่ได้ จึงล้างทิ้ง (ตัวเอกสารยังอยู่ แต่ต้องอัปโหลดใหม่เพื่อสร้าง embedding)
+-- ย้ายมิติ embedding ให้ตรงกับโมเดลที่ใช้ (google/embeddinggemma-2 = 768 มิติ)
+-- ค่า embedding ของโมเดลเก่าใช้กับโมเดลใหม่ไม่ได้ จึงล้างทิ้ง (ตัวเอกสารยังอยู่ แต่ต้องอัปโหลดใหม่เพื่อสร้าง embedding)
 do $mig$
 begin
   if (select atttypmod from pg_attribute
-        where attrelid = 'knowledge_documents'::regclass and attname = 'embedding') <> 1024 then
+        where attrelid = 'knowledge_documents'::regclass and attname = 'embedding') <> 768 then
     drop index if exists knowledge_embedding_idx;
     update knowledge_documents set embedding = null;
-    alter table knowledge_documents alter column embedding type vector(1024);
+    alter table knowledge_documents alter column embedding type vector(768);
   end if;
 end
 $mig$;
