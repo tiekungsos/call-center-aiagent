@@ -10,7 +10,7 @@ import * as knowledge from './core/knowledge.js';
 import * as store from './core/store.js';
 import { dbEnabled } from './db.js';
 import { outboundReady, startCampaign } from './outbound/campaign.js';
-import { ALL_TOOLS, CORE_TOOLS } from './tools.js';
+import { ALL_TOOLS, CORE_TOOLS, STUB_TOOLS } from './tools.js';
 
 type Q = { tenant?: string; limit?: string; offset?: string };
 type Body = {
@@ -219,7 +219,11 @@ export function buildApi() {
 
   /** เครื่องมือทั้งหมดที่ระบบรู้จัก — ให้ console แสดง checkbox เปิด/ปิดต่อ agent */
   app.get('/api/tools', async () => ({
-    tools: ALL_TOOLS.map((t) => ({ name: t.name, description: t.description })),
+    tools: ALL_TOOLS.map((t) => ({
+      name: t.name,
+      description: t.description,
+      stub: STUB_TOOLS.has(t.name as string),
+    })),
     core: CORE_TOOLS.map((t) => t.name),
   }));
 

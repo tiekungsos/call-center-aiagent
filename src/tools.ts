@@ -163,6 +163,12 @@ export const ALL_TOOLS: FunctionDeclaration[] = [
   check_pawn_ticket,
 ];
 
+/**
+ * เครื่องมือที่ยังไม่ต่อระบบจริง (TODO) — เปิดได้ แต่จะตอบผู้โทรว่าให้เจ้าหน้าที่ตรวจสอบ
+ * ใช้แสดงคำเตือนใน console ไม่ให้เข้าใจว่าเชื่อมข้อมูลจริงแล้ว
+ */
+export const STUB_TOOLS = new Set(['check_order', 'check_pawn_ticket']);
+
 const TOOL_BY_NAME = new Map(ALL_TOOLS.map((t) => [t.name as string, t]));
 
 /** ประกอบเครื่องมือจากชื่อ (ที่เก็บใน agents.enabled_tools) — ข้ามชื่อที่ไม่รู้จักและชื่อซ้ำ */

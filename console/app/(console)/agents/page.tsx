@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { apiSend, CLIENT_API, TENANT } from '@/lib/api';
+import { VOICES } from '@/lib/voices';
 
 interface Agent {
   id: string;
@@ -23,6 +24,8 @@ interface Agent {
 interface ToolInfo {
   name: string;
   description?: string;
+  /** ยังไม่ต่อระบบจริง (TODO) — เปิดได้ แต่จะตอบผู้โทรว่าให้เจ้าหน้าที่ตรวจสอบ */
+  stub?: boolean;
 }
 
 export default function AgentsPage() {
@@ -266,7 +269,17 @@ export default function AgentsPage() {
               </label>
               <label>
                 เสียง
-                <input value={draft.voice ?? ''} onChange={(e) => set('voice', e.target.value)} placeholder="Zephyr" />
+                <select value={draft.voice ?? ''} onChange={(e) => set('voice', e.target.value)}>
+                  <option value="">ค่าเริ่มต้น (Zephyr)</option>
+                  {VOICES.map((v) => (
+                    <option key={v.name} value={v.name}>
+                      {v.name} — {v.tone}, {v.pitch}
+                    </option>
+                  ))}
+                  {draft.voice && !VOICES.some((v) => v.name === draft.voice) ? (
+                    <option value={draft.voice}>{draft.voice} (กำหนดเอง)</option>
+                  ) : null}
+                </select>
               </label>
               <label>
                 สถานะ
@@ -281,19 +294,30 @@ export default function AgentsPage() {
               <span className="dim" style={{ fontSize: 12, fontWeight: 600 }}>
                 เครื่องมือที่เปิดใช้ (มีผลกับสายใหม่ทันที)
               </span>
-              <div className="grid cols-2" style={{ gap: 6, marginTop: 8 }}>
-                {tools.map((t) => (
-                  <label key={t.name} className="row" style={{ gap: 7, fontWeight: 400, fontSize: 12.5 }}>
-                    <input
-                      type="checkbox"
-                      style={{ width: 'auto' }}
-                      checked={draft.enabled_tools.includes(t.name)}
-                      onChange={() => toggleTool(t.name)}
-                    />
-                    <span className="mono">{t.name}</span>
-                    {coreTools.includes(t.name) ? <span className="chip">กลาง</span> : null}
-                  </label>
-                ))}
+              <p className="muted" style={{ margin: '4px 0 0', fontSize: 11.5 }}>
+                เครื่องมือ = สิ่งที่ AI เรียกใช้ได้ระหว่างคุย เช่น โอนสาย เปิดเรื่อง หรือค้นคลังความรู้ — ติ๊กถูกเพื่อเปิด
+              </p>
+              <div className="grid cols-2" style={{ gap: 10, marginTop: 8 }}>
+                {tools.map((t) => {
+                  const on = draft.enabled_tools.includes(t.name);
+                  return (
+                    <label key={t.name} className="tool-option" data-on={on}>
+                      <input type="checkbox" style={{ width: 'auto', marginTop: 3 }} checked={on} onChange={() => toggleTool(t.name)} />
+                      <span>
+                        <span className="row wrap" style={{ gap: 6, alignItems: 'center' }}>
+                          <span className="mono" style={{ fontSize: 12.5, fontWeight: 600 }}>
+                            {t.name}
+                          </span>
+                          {coreTools.includes(t.name) ? <span className="chip">ใช้ทุก agent</span> : null}
+                          {t.stub ? <span className="chip warn">ยังไม่ต่อระบบจริง</span> : null}
+                        </span>
+                        <span className="dim" style={{ display: 'block', fontSize: 11.5, marginTop: 3, lineHeight: 1.45 }}>
+                          {t.description ?? '—'}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
               </div>
               {draft.enabled_tools.length === 0 ? (
                 <p className="muted" style={{ marginTop: 6, fontSize: 12 }}>

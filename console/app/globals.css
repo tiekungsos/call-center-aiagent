@@ -658,3 +658,26 @@ label {
   font-size: 12px;
   font-weight: 600;
 }
+
+/* --- ตัวเลือกเครื่องมือในหน้า /agents --- */
+.tool-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.tool-option:hover {
+  border-color: var(--line-2);
+}
+
+.tool-option[data-on='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
