@@ -32,6 +32,7 @@ export default function AgentsPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [coreTools, setCoreTools] = useState<string[]>([]);
+  const [defaults, setDefaults] = useState<{ voice: string; model: string } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState<Agent | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -47,9 +48,10 @@ export default function AgentsPage() {
         fetch(`${CLIENT_API}/api/agents?tenant=${TENANT}`, { cache: 'no-store' }),
         fetch(`${CLIENT_API}/api/tools`, { cache: 'no-store' }),
       ]);
-      const data = (await agentRes.json()) as { agents: Agent[] };
+      const data = (await agentRes.json()) as { agents: Agent[]; defaults?: { voice: string; model: string } };
       const toolData = (await toolRes.json()) as { tools: ToolInfo[]; core: string[] };
       setAgents(data.agents ?? []);
+      setDefaults(data.defaults ?? null);
       setTools(toolData.tools ?? []);
       setCoreTools(toolData.core ?? []);
       setState('ready');
@@ -270,7 +272,7 @@ export default function AgentsPage() {
               <label>
                 เสียง
                 <select value={draft.voice ?? ''} onChange={(e) => set('voice', e.target.value)}>
-                  <option value="">ค่าเริ่มต้น (Zephyr)</option>
+                  <option value="">ค่าเริ่มต้นของระบบ ({defaults?.voice ?? '…'})</option>
                   {VOICES.map((v) => (
                     <option key={v.name} value={v.name}>
                       {v.name} — {v.tone}, {v.pitch}
@@ -280,6 +282,9 @@ export default function AgentsPage() {
                     <option value={draft.voice}>{draft.voice} (กำหนดเอง)</option>
                   ) : null}
                 </select>
+                <span className="dim" style={{ fontSize: 11, fontWeight: 400 }}>
+                  ใช้จริง: <span className="mono">{draft.voice || defaults?.voice || '—'}</span> (มีผลกับสายใหม่)
+                </span>
               </label>
               <label>
                 สถานะ

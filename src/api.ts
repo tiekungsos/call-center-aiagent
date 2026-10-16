@@ -3,7 +3,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { WebSocketServer } from 'ws';
 import { handleLineWebhook, verifyLineSignature } from './chat/line.js';
 import { handleChatWs } from './chat/ws.js';
-import { invalidateActiveAgent } from './core/agentConfig.js';
+import { agentDefaults, invalidateActiveAgent } from './core/agentConfig.js';
 import { analyzeCall } from './core/analytics.js';
 import * as auth from './core/auth.js';
 import * as knowledge from './core/knowledge.js';
@@ -214,7 +214,8 @@ export function buildApi() {
 
   app.get<{ Querystring: Q }>('/api/agents', async (req) => {
     const t = await tenantOf(req.query.tenant);
-    return { agents: t ? ((await store.listAgents(t.id)) ?? []) : [] };
+    // ส่งค่าเริ่มต้น (จาก env) ไปด้วย เพื่อให้ console แสดงว่า agent ที่ยังไม่ตั้งเสียงจะได้เสียงอะไร
+    return { agents: t ? ((await store.listAgents(t.id)) ?? []) : [], defaults: agentDefaults() };
   });
 
   /** เครื่องมือทั้งหมดที่ระบบรู้จัก — ให้ console แสดง checkbox เปิด/ปิดต่อ agent */

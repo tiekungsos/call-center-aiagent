@@ -23,6 +23,12 @@ const CACHE_TTL_MS = Number(process.env.AGENT_CACHE_TTL_MS ?? 60_000);
 let cached: { at: number; value: ResolvedAgent } | undefined;
 let inflight: Promise<ResolvedAgent> | undefined;
 
+/** ค่าเริ่มต้นของ agent ที่ยังไม่ได้ตั้ง voice/model เอง (มาจาก env) — ให้ console แสดงได้ตรงความจริง */
+export const agentDefaults = () => ({
+  voice: process.env.VOICE?.trim() || 'Zephyr',
+  model: process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-live',
+});
+
 /**
  * คืน agent ที่ใช้งานอยู่ (cache สั้น ๆ ให้ console แก้แล้วมีผลภายใน ~1 นาที)
  * ลำดับความสำคัญ: agent ที่ตั้ง "ใช้งาน" ไว้ใน console (DB) -> โปรไฟล์ในโค้ด (AGENT_PROFILE)
@@ -76,8 +82,9 @@ async function resolve(): Promise<ResolvedAgent> {
     profile,
     systemPrompt: buildSystemPrompt(profile),
     tools: row ? toolsForRow(row, codeProfile) : toolsFor(envProfile),
-    voice: process.env.VOICE?.trim() || row?.voice || 'Zephyr',
-    model: process.env.GEMINI_MODEL?.trim() || row?.model || 'gemini-3.8-live',
+    // console (DB) เป็นเจ้าของค่า — env VOICE/GEMINI_MODEL เป็นแค่ค่าเริ่มต้นของ agent ที่ยังไม่ได้ตั้ง
+    voice: row?.voice?.trim() || agentDefaults().voice,
+    model: row?.model?.trim() || agentDefaults().model,
   };
 }
 

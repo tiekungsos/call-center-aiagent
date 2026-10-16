@@ -135,6 +135,8 @@ export class CallAgent extends EventEmitter {
   private async connect() {
     const cfg = this.cfg;
     if (!cfg) throw new Error('agent config not resolved');
+    // log ค่าที่ใช้จริง เพื่อตรวจสอบได้ว่าเสียง/โมเดลที่ตั้งใน console มีผลกับสายนี้
+    this.log.write('session_config', { profileId: cfg.profileId, agentId: cfg.agentId, voice: cfg.voice, model: cfg.model });
     this.ready = false;
     this.session = await ai.live.connect({
       model: cfg.model,

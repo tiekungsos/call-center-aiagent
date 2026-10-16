@@ -18,7 +18,9 @@ const LOCAL = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 const hasDb = await migrate();
 if (hasDb) await seedConsoleAdmin();
 const agent = await getActiveAgent();
-console.log(`[profile] ${agent.profileId} (${agent.name}) tenant=${agent.tenantId ?? '-'} db=${hasDb ? 'on' : 'off'}`);
+console.log(
+  `[profile] ${agent.profileId} (${agent.name}) voice=${agent.voice} model=${agent.model} tenant=${agent.tenantId ?? '-'} db=${hasDb ? 'on' : 'off'}`,
+);
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? '/', 'http://localhost');
