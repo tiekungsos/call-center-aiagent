@@ -681,3 +681,26 @@ label {
   border-color: var(--accent);
   background: var(--accent-soft);
 }
+
+/* --- ปุ่มขนาดเล็กในตาราง/แถวรายการ --- */
+.btn.sm {
+  padding: 4px 9px;
+  font-size: 12px;
+  gap: 5px;
+}
+
+/* --- แถวรายการที่กดได้ทั้งแถว --- */
+tr.row-link {
+  cursor: pointer;
+}
+
+tr.row-link:hover td {
+  background: var(--panel);
+}
+
+.row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  align-items: center;
+}

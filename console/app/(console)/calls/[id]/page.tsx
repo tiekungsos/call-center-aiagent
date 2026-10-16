@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { AnalyzeButton } from '@/components/AnalyzeButton';
 import { actionChip, apiGet, fmtDuration, fmtTime, sentimentChip } from '@/lib/api';
 
 interface Detail {
@@ -49,19 +50,41 @@ export default async function CallDetail({ params }: { params: Promise<{ id: str
             {fmtTime(call.started_at)} · {fmtDuration(call.started_at, call.ended_at)}
           </p>
         </div>
-        <div className="row wrap">
+        <div className="row wrap" style={{ alignItems: 'center' }}>
           <span className={`chip ${a.cls}`}>{a.label}</span>
           <span className={`chip ${s.cls}`}>{s.label}</span>
+          <AnalyzeButton callId={call.id} />
         </div>
       </div>
 
       {call.summary ? (
         <div className="card card-pad" style={{ marginBottom: 14 }}>
-          <h3>สรุปการสนทนา</h3>
+          <div className="row between wrap">
+            <h3>สรุปการสนทนา</h3>
+            <span className="dim" style={{ fontSize: 11.5 }}>
+              วิเคราะห์โดย AI จากบทสนทนา
+            </span>
+          </div>
           <p style={{ marginTop: 6 }}>{call.summary}</p>
-          {call.intent ? <p className="muted" style={{ marginTop: 6 }}>ความต้องการ: {call.intent}</p> : null}
+          {call.intent ? (
+            <p className="muted" style={{ marginTop: 6 }}>
+              ความต้องการ: {call.intent}
+            </p>
+          ) : null}
         </div>
-      ) : null}
+      ) : (
+        <div className="card card-pad" style={{ marginBottom: 14 }}>
+          <div className="row between wrap">
+            <div>
+              <h3>ยังไม่ได้วิเคราะห์สายนี้</h3>
+              <p className="muted" style={{ marginTop: 6 }}>
+                กด “วิเคราะห์” เพื่อให้ AI สรุปบทสนทนา ระบุความต้องการ และประเมินอารมณ์ของผู้ติดต่อ
+              </p>
+            </div>
+            <AnalyzeButton callId={call.id} />
+          </div>
+        </div>
+      )}
 
       <div className="grid cols-2">
         <div className="card card-pad">
