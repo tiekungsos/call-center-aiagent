@@ -5,6 +5,7 @@ dist/
 !.env.example
 logs/
 recordings/
+uploads/
 .DS_Store
 .next/
 next-env.d.ts

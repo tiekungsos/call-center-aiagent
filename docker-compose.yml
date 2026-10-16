@@ -56,10 +56,13 @@ services:
       NEXT_PUBLIC_TENANT: ${TENANT_SLUG:-aileo}
       # โฟลเดอร์ไฟล์บันทึกเสียง (อ่านอย่างเดียว) — ให้ปุ่มฟังเสียงในหน้า /calls ใช้ได้
       RECORDINGS_DIR: /recordings
+      # โฟลเดอร์ไฟล์ที่อัปโหลดเข้าคลังความรู้ (อ่านอย่างเดียว) — ให้ดาวน์โหลดย้อนหลังได้
+      UPLOADS_DIR: /uploads
     volumes:
       - ./console:/app
       - console_node_modules:/app/node_modules
       - ./recordings:/recordings:ro
+      - ./uploads:/uploads:ro
     restart: unless-stopped
 
 volumes:

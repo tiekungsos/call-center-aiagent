@@ -41,3 +41,33 @@ export async function embed(text: string, task: EmbedTask = 'document'): Promise
 
 /** แปลง number[] เป็น literal ของ pgvector */
 export const toVector = (v: number[]) => `[${v.join(',')}]`;
+
+/**
+ * embedding ของรูป (multimodal) — embeddinggemma-2 วางข้อความและรูปไว้ในปริภูมิเดียวกัน
+ * จึงเทียบคำค้น (ข้อความ) กับรูปได้ด้วย
+ */
+export async function embedImage(base64: string, mime: string, task: EmbedTask = 'document'): Promise<number[] | undefined> {
+  if (!API_KEY) {
+    console.error('[embed] ไม่ได้ตั้ง DEEPINFRA_API_KEY');
+    return undefined;
+  }
+  try {
+    const res = await fetch(`${BASE_URL}/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
+      body: JSON.stringify({
+        model: MODEL,
+        input: [[{ type: 'image_url', image_url: { url: `data:${mime};base64,${base64}` } }]],
+        task,
+        dimensions: DIMS,
+        encoding_format: 'float',
+      }),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 300)}`);
+    const data = (await res.json()) as { data?: { embedding?: number[] }[] };
+    return data.data?.[0]?.embedding;
+  } catch (err) {
+    console.error('[embed:image]', (err as Error).message);
+    return undefined;
+  }
+}

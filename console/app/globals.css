@@ -974,3 +974,21 @@ tr.row-link:hover td {
   align-items: center;
 }
 
+
+/* --- โซนลากไฟล์ (เส้นประ = รอยปรุตามโลกของแบรนด์) --- */
+.drop {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  padding: 20px 16px;
+  text-align: center;
+  border: 1.5px dashed var(--line-2);
+  border-radius: var(--radius);
+  background: var(--panel);
+  transition: border-color 150ms var(--ease-paper), background 150ms var(--ease-paper);
+}
+
+.drop[data-over='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}

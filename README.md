@@ -79,7 +79,7 @@ npm run typecheck      # ตรวจ type
 
 - bridge ฟังเฉพาะ `127.0.0.1` เป็นค่าเริ่มต้น (Asterisk อยู่เครื่องเดียวกัน, Twilio เข้าผ่าน reverse proxy) เปลี่ยนได้ด้วย `BIND_HOST`
 - env ที่ใช้: `GEMINI_API_KEY`, `GEMINI_MODEL`, `VOICE`, `AGENT_PROFILE`, `BUSINESS_NAME`, `PORT`, `AUDIOSOCKET_PORT`, `LOG_DIR`, `PUBLIC_HOST`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `OFFICER_TRANSFER_NUMBER`, `EMERGENCY_TRANSFER_NUMBER`, `ASTERISK_BIND_IP`, `SIP_PASSWORD_1001/2001/2002`, `RECORD_CALLS`, `DEBUG_AUDIO` (คำอธิบายอยู่ใน `.env.example`)
-- env ที่เพิ่มในเฟสถัดไป: `DATABASE_URL`, `POSTGRES_*`, `API_PORT`, `API_TOKEN`, `TENANT_SLUG`, `TENANT_NAME`, `AGENT_CACHE_TTL_MS` (P0/P4) · `EMBED_MODEL`, `EMBED_DIMS`, `GOLD_PRICE_URL`, `GOLD_PRICE_TTL_MS` (P1) · `CHAT_MODEL`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (P2) · `AMI_*`, `OUTBOUND_TRUNK`, `CAMPAIGN_BATCH` (P5) · `SCREENPOP_URL` (P6) · `CONSOLE_PORT`, `CONSOLE_SESSION_SECRET`, `CONSOLE_ADMIN_USER`, `CONSOLE_ADMIN_PASSWORD`, `CONSOLE_SESSION_TTL_HOURS`, `CONSOLE_LOGIN_MAX_ATTEMPTS`, `CONSOLE_LOGIN_WINDOW_MINUTES` (P3) · `DEEPINFRA_API_KEY`, `DEEPINFRA_BASE_URL`, `ANALYTICS_MODEL` (P4 analytics)
+- env ที่เพิ่มในเฟสถัดไป: `DATABASE_URL`, `POSTGRES_*`, `API_PORT`, `API_TOKEN`, `TENANT_SLUG`, `TENANT_NAME`, `AGENT_CACHE_TTL_MS` (P0/P4) · `EMBED_MODEL`, `EMBED_DIMS`, `UPLOAD_DIR`, `VISION_MODEL`, `GOLD_PRICE_URL`, `GOLD_PRICE_TTL_MS` (P1) · `CHAT_MODEL`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (P2) · `AMI_*`, `OUTBOUND_TRUNK`, `CAMPAIGN_BATCH` (P5) · `SCREENPOP_URL` (P6) · `CONSOLE_PORT`, `CONSOLE_SESSION_SECRET`, `CONSOLE_ADMIN_USER`, `CONSOLE_ADMIN_PASSWORD`, `CONSOLE_SESSION_TTL_HOURS`, `CONSOLE_LOGIN_MAX_ATTEMPTS`, `CONSOLE_LOGIN_WINDOW_MINUTES` (P3) · `DEEPINFRA_API_KEY`, `DEEPINFRA_BASE_URL`, `ANALYTICS_MODEL` (P4 analytics)
 
 ## Postgres + REST API (P0)
 เก็บ `calls` / `turns` / tool calls / `tickets` / latency ลง Postgres และเปิด REST API ให้ console (P3) กับ analytics (P4) ใช้ต่อ
@@ -131,7 +131,7 @@ cd console && npm install && npm run dev   # http://127.0.0.1:3000
 | `/calls`, `/calls/[id]` | รายการสาย + transcript เต็ม, tool calls, latency, สรุป/ความต้องการ/อารมณ์ |
 | `/tickets` | เรื่องร้องเรียนที่ AI เปิดไว้ให้ติดต่อกลับ |
 | `/agents` | เลือก agent ที่ใช้งาน (ปุ่ม “ตั้งเป็นใช้งาน”), แก้ persona / tool guide / ฐานความรู้ / เครื่องมือ / voice, เพิ่ม-ลบ agent — มีผลกับสายใหม่ทันที |
-| `/knowledge` | คลังความรู้ (RAG) ของแต่ละ agent — เลือก agent แล้วเพิ่ม/ทดสอบค้นหา/ลบ (แยกคลังกัน ไม่มีแบบใช้ร่วม) |
+| `/knowledge` | คลังความรู้ (RAG) ของแต่ละ agent — อัปโหลด **ไฟล์ PDF / รูป / ข้อความ** หรือวางข้อความ แล้วทดสอบค้นหา/ดาวน์โหลดไฟล์ต้นฉบับ/ลบ (แยกคลังกัน ไม่มีแบบใช้ร่วม) |
 | `/campaigns` | สร้างแคมเปญโทรออก, สั่งเริ่ม, ดูผลรายเบอร์ |
 | `/settings` | webhook ไป CRM/ERP (+ ค่า `SCREENPOP_URL` ฝั่ง bridge) |
 | `/users` | จัดการผู้ใช้ console (admin เท่านั้น): เพิ่ม/ปิดใช้/เปลี่ยนสิทธิ์/รีเซ็ตรหัสผ่าน/ลบ |

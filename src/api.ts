@@ -39,6 +39,9 @@ type Body = {
   enabledTools?: string[];
   is_active?: boolean;
   gender?: string;
+  filename?: string;
+  mime?: string;
+  dataBase64?: string;
 };
 
 async function tenantOf(slug?: string) {
@@ -94,7 +97,8 @@ async function requireAdmin(req: FastifyRequest, reply: FastifyReply): Promise<b
 
 /** REST API สำหรับ console (P3) และ analytics (P4) — แยกพอร์ตจาก telephony bridge */
 export function buildApi() {
-  const app = Fastify({ logger: false });
+  // อัปโหลดไฟล์ส่งเป็น base64 มากับ JSON — ต้องขยาย limit (default 1MB)
+  const app = Fastify({ logger: false, bodyLimit: 25 * 1024 * 1024 });
 
   // เก็บ raw body ไว้ตรวจ signature ของ LINE (X-Line-Signature)
   app.addContentTypeParser('application/json', { parseAs: 'buffer' }, (req, body, done) => {
@@ -415,6 +419,37 @@ export function buildApi() {
   app.delete<{ Params: { id: string } }>('/api/knowledge/:id', async (req) => {
     await knowledge.removeDoc(req.params.id);
     return { deleted: true };
+  });
+
+  /** อัปโหลดไฟล์ (PDF / รูป / ข้อความ) — ส่งเป็น base64 พร้อมชื่อไฟล์ */
+  app.post<{ Body: Body }>('/api/knowledge/upload', async (req, reply) => {
+    const t = await tenantOf(req.body?.tenant);
+    if (!t) return reply.code(400).send({ error: 'unknown tenant' });
+    const agentId = req.body?.agentId?.trim();
+    if (!agentId) return reply.code(400).send({ error: 'ต้องระบุ agentId — เอกสารต้องผูกกับ agent' });
+    const filename = req.body?.filename?.trim();
+    const dataBase64 = req.body?.dataBase64;
+    if (!filename || !dataBase64) return reply.code(400).send({ error: 'ต้องส่ง filename และ dataBase64' });
+
+    const buf = Buffer.from(dataBase64, 'base64');
+    if (!buf.length) return reply.code(400).send({ error: 'ไฟล์ว่างหรือถอด base64 ไม่ได้' });
+
+    const result = await knowledge.ingestFile({
+      tenantId: t.id,
+      agentId,
+      title: req.body?.title,
+      filename,
+      mime: req.body?.mime ?? '',
+      buf,
+    });
+    if ('error' in result) return reply.code(400).send(result);
+    return result;
+  });
+
+  /** ข้อมูลเอกสารเดี่ยว (ให้ console รู้ path ไฟล์ต้นฉบับก่อนดาวน์โหลด) */
+  app.get<{ Params: { id: string } }>('/api/knowledge/doc/:id', async (req, reply) => {
+    const doc = await knowledge.getDoc(req.params.id);
+    return doc ? { doc } : reply.code(404).send({ error: 'not found' });
   });
 
   // --- P2: LINE OA webhook ---

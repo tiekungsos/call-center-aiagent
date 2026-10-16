@@ -140,6 +140,12 @@ create table if not exists knowledge_documents (
 -- สำหรับ DB ที่สร้างไว้ก่อนมี RAG
 alter table knowledge_documents add column if not exists embedding vector(768);
 
+-- อัปโหลดไฟล์: ชนิดไฟล์ + ไฟล์ต้นฉบับที่เก็บไว้ (ดาวน์โหลดย้อนหลังได้)
+alter table knowledge_documents add column if not exists kind text not null default 'text';
+alter table knowledge_documents add column if not exists source_name text;
+alter table knowledge_documents add column if not exists mime_type text;
+alter table knowledge_documents add column if not exists storage_path text;
+
 -- ย้ายเอกสารเดิมที่ไม่ระบุ agent ให้ไปอยู่กับ agent ที่ใช้งานของ tenant นั้น แล้วบังคับ not null
 update knowledge_documents d
    set agent_id = a.id

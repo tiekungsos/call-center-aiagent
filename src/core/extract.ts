@@ -1,0 +1,64 @@
+import { GoogleGenAI } from '@google/genai';
+
+/**
+ * ถอดข้อความจากไฟล์ที่อัปโหลด
+ * - text/md/txt อ่านตรง ๆ (ไม่เสียค่า API)
+ * - pdf/รูป ใช้ Gemini ซึ่งอ่านภาษาไทยได้แม่นและรองรับ PDF สแกน (ทดสอบแล้วเทียบกับตัวอ่าน PDF ทั่วไป
+ *   ที่ได้ข้อความไทยเพี้ยน)
+ */
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const MODEL = process.env.VISION_MODEL ?? 'gemini-3.5-flash';
+
+export type DocKind = 'text' | 'pdf' | 'image';
+
+/** ขนาดสูงสุดที่ส่งให้ Gemini แบบ inline ได้ (limit ของ API อยู่ที่ ~20MB) */
+export const MAX_FILE_BYTES = 15 * 1024 * 1024;
+
+const IMAGE_EXT = /\.(png|jpe?g|webp|gif|bmp|tiff?)$/i;
+const TEXT_EXT = /\.(md|markdown|txt|csv|tsv|json|ya?ml|html?)$/i;
+
+export function kindOf(mime: string, filename: string): DocKind {
+  const m = (mime || '').toLowerCase();
+  if (m === 'application/pdf' || /\.pdf$/i.test(filename)) return 'pdf';
+  if (m.startsWith('image/') || IMAGE_EXT.test(filename)) return 'image';
+  if (m.startsWith('text/') || TEXT_EXT.test(filename)) return 'text';
+  return 'text';
+}
+
+/** นามสกุลที่ยอมรับให้อัปโหลด */
+export const ACCEPTED = /\.(pdf|md|markdown|txt|csv|tsv|json|ya?ml|html?|png|jpe?g|webp|gif|bmp|tiff?)$/i;
+
+const PROMPTS: Record<Exclude<DocKind, 'text'>, string> = {
+  pdf: `ถอดข้อความทั้งหมดในไฟล์นี้ตามลำดับที่อ่านได้ เป็นภาษาไทยตามต้นฉบับ
+ตอบเป็นข้อความธรรมดา ไม่ต้องจัดรูปแบบ ไม่ต้องสรุป ไม่ต้องใส่ความคิดเห็น`,
+  image: `ถอดข้อความทั้งหมดในภาพนี้ออกมาให้ครบ (ไทยและอังกฤษ) โดยรักษาตัวเลขและตัวสะกดให้ถูกต้อง
+จากนั้นขึ้นบรรทัดใหม่แล้วเขียนว่า "สรุปภาพ:" แล้วอธิบายสั้น ๆ 1-2 ประโยคว่าภาพนี้คืออะไร
+ตอบเป็นข้อความธรรมดา ไม่ต้องจัดรูปแบบ`,
+};
+
+/** ถอดข้อความ — คืน undefined ถ้าล้มเหลว (ให้ผู้เรียกแจ้ง error เอง) */
+export async function extractText(buf: Buffer, mime: string, kind: DocKind): Promise<string | undefined> {
+  if (kind === 'text') {
+    const text = buf.toString('utf8');
+    // ไฟล์ไบนารีที่หลุดเข้ามาเป็น text จะมีอักขระควบคุมเยอะ — กันไม่ให้เข้า KB
+    return /\u0000/.test(text) ? undefined : text;
+  }
+
+  const mimeType = kind === 'pdf' ? 'application/pdf' : mime || 'image/jpeg';
+  try {
+    const res = await ai.models.generateContent({
+      model: MODEL,
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: PROMPTS[kind] }, { inlineData: { mimeType, data: buf.toString('base64') } }],
+        },
+      ],
+    });
+    const text = (res.text ?? '').replace(/\u0000/g, '').trim();
+    return text || undefined;
+  } catch (err) {
+    console.error('[extract]', (err as Error).message);
+    return undefined;
+  }
+}
