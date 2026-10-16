@@ -74,7 +74,7 @@ npm run typecheck      # ตรวจ type
 
 - bridge ฟังเฉพาะ `127.0.0.1` เป็นค่าเริ่มต้น (Asterisk อยู่เครื่องเดียวกัน, Twilio เข้าผ่าน reverse proxy) เปลี่ยนได้ด้วย `BIND_HOST`
 - env ที่ใช้: `GEMINI_API_KEY`, `GEMINI_MODEL`, `VOICE`, `AGENT_PROFILE`, `BUSINESS_NAME`, `PORT`, `AUDIOSOCKET_PORT`, `LOG_DIR`, `PUBLIC_HOST`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `OFFICER_TRANSFER_NUMBER`, `EMERGENCY_TRANSFER_NUMBER`, `ASTERISK_BIND_IP`, `SIP_PASSWORD_1001/2001/2002`, `RECORD_CALLS`, `DEBUG_AUDIO` (คำอธิบายอยู่ใน `.env.example`)
-- env ที่เพิ่มในเฟสถัดไป: `DATABASE_URL`, `POSTGRES_*`, `API_PORT`, `API_TOKEN`, `TENANT_SLUG`, `TENANT_NAME`, `AGENT_CACHE_TTL_MS` (P0/P4) · `CHAT_MODEL`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (P2) · `AMI_*`, `OUTBOUND_TRUNK`, `CAMPAIGN_BATCH` (P5) · `SCREENPOP_URL` (P6) · `CONSOLE_PORT` (P3)
+- env ที่เพิ่มในเฟสถัดไป: `DATABASE_URL`, `POSTGRES_*`, `API_PORT`, `API_TOKEN`, `TENANT_SLUG`, `TENANT_NAME`, `AGENT_CACHE_TTL_MS` (P0/P4) · `CHAT_MODEL`, `LINE_CHANNEL_SECRET`, `LINE_CHANNEL_ACCESS_TOKEN` (P2) · `AMI_*`, `OUTBOUND_TRUNK`, `CAMPAIGN_BATCH` (P5) · `SCREENPOP_URL` (P6) · `CONSOLE_PORT` (P3) · `DEEPINFRA_API_KEY`, `DEEPINFRA_BASE_URL`, `ANALYTICS_MODEL` (P4 analytics)
 
 ## Postgres + REST API (P0)
 เก็บ `calls` / `turns` / tool calls / `tickets` / latency ลง Postgres และเปิด REST API ให้ console (P3) กับ analytics (P4) ใช้ต่อ
@@ -134,7 +134,7 @@ Console เรียก API ผ่าน **proxy ของตัวเอง** (
 |---|---|---|
 | P1 | **RAG** — คลังความรู้ + `search_knowledge` (pgvector) | `src/core/knowledge.ts`, `POST /api/knowledge` |
 | P2 | **Text chat** — LINE OA + web widget ใช้ persona/KB/tools ชุดเดียวกับเสียง | `src/chat/` |
-| P4 | **Analytics** — สรุป/intent/sentiment ต่อสาย (Gemini JSON mode) | `src/core/analytics.ts` |
+| P4 | **Analytics** — สรุป/intent/sentiment ต่อสาย (DeepInfra JSON mode) | `src/core/analytics.ts` |
 | P5 | **โทรออก** — แคมเปญ + batch dialer ผ่าน AMI | `src/outbound/` |
 | P6 | **CRM/ERP** — webhook เซ็น HMAC + screen pop ตอนโอนสาย | `src/core/integrations.ts` |
 | P7 | **คุณภาพเสียง** — แนวทาง noise suppression / backchannel / ASR ไทย | `docs/voice-quality.md` |
