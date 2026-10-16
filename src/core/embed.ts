@@ -1,19 +1,27 @@
-import { GoogleGenAI } from '@google/genai';
+/**
+ * Embedding ผ่าน DeepInfra (OpenAI-compatible /embeddings)
+ * ใช้ DEEPINFRA_API_KEY ตัวเดียวกับ analytics — ไม่ต้องเพิ่ม dependency (ใช้ fetch)
+ * มิติต้องตรงกับคอลัมน์ knowledge_documents.embedding (BAAI/bge-m3 = 1024)
+ */
+const API_KEY = process.env.DEEPINFRA_API_KEY;
+const BASE_URL = (process.env.DEEPINFRA_BASE_URL ?? 'https://api.deepinfra.com/v1/openai').replace(/\/+$/, '');
+const MODEL = process.env.EMBED_MODEL ?? 'BAAI/bge-m3';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-// text-embedding-004 ถูกเลิกให้บริการแล้ว — ใช้ gemini-embedding-001 (กำหนดมิติให้ตรงกับคอลัมน์ vector(768))
-const MODEL = process.env.EMBED_MODEL ?? 'gemini-embedding-001';
-const DIMS = Number(process.env.EMBED_DIMS ?? 768);
-
-/** สร้าง embedding (768 มิติ) — คืน undefined ถ้าล้มเหลว เพื่อไม่ให้กระทบสาย */
+/** สร้าง embedding — คืน undefined ถ้าล้มเหลว เพื่อไม่ให้กระทบสาย */
 export async function embed(text: string): Promise<number[] | undefined> {
+  if (!API_KEY) {
+    console.error('[embed] ไม่ได้ตั้ง DEEPINFRA_API_KEY');
+    return undefined;
+  }
   try {
-    const r = await ai.models.embedContent({
-      model: MODEL,
-      contents: text.slice(0, 8000),
-      config: { outputDimensionality: DIMS },
+    const res = await fetch(`${BASE_URL}/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
+      body: JSON.stringify({ model: MODEL, input: text.slice(0, 8000), encoding_format: 'float' }),
     });
-    return r.embeddings?.[0]?.values;
+    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 300)}`);
+    const data = (await res.json()) as { data?: { embedding?: number[] }[] };
+    return data.data?.[0]?.embedding;
   } catch (err) {
     console.error('[embed]', (err as Error).message);
     return undefined;

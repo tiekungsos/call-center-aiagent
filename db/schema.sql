@@ -122,19 +122,33 @@ create table if not exists contacts (
   unique (tenant_id, phone)
 );
 
--- คลังความรู้ (P1: RAG) — chunk + embedding 768 มิติ (Gemini text-embedding-004)
+-- คลังความรู้ (P1: RAG) — chunk + embedding 1024 มิติ (DeepInfra BAAI/bge-m3)
 create table if not exists knowledge_documents (
   id         uuid primary key default gen_random_uuid(),
   tenant_id  uuid not null references tenants(id) on delete cascade,
   agent_id   uuid references agents(id) on delete cascade,
   title      text,
   content    text not null,
-  embedding  vector(768),
+  embedding  vector(1024),
   metadata   jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 -- สำหรับ DB ที่สร้างไว้ก่อนมี RAG
-alter table knowledge_documents add column if not exists embedding vector(768);
+alter table knowledge_documents add column if not exists embedding vector(1024);
+
+-- ย้ายมิติ embedding: 768 (Gemini text-embedding-004) -> 1024 (DeepInfra BAAI/bge-m3)
+-- ค่า embedding เดิมใช้กับโมเดลใหม่ไม่ได้ จึงล้างทิ้ง (ตัวเอกสารยังอยู่ แต่ต้องอัปโหลดใหม่เพื่อสร้าง embedding)
+do $mig$
+begin
+  if (select atttypmod from pg_attribute
+        where attrelid = 'knowledge_documents'::regclass and attname = 'embedding') <> 1024 then
+    drop index if exists knowledge_embedding_idx;
+    update knowledge_documents set embedding = null;
+    alter table knowledge_documents alter column embedding type vector(1024);
+  end if;
+end
+$mig$;
+
 create index if not exists knowledge_tenant_idx on knowledge_documents (tenant_id);
 create index if not exists knowledge_agent_idx on knowledge_documents (agent_id);
 create index if not exists knowledge_embedding_idx on knowledge_documents
