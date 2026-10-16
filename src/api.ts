@@ -41,7 +41,7 @@ type Body = {
 };
 
 async function tenantOf(slug?: string) {
-  const s = slug?.trim() || process.env.TENANT_SLUG?.trim() || 'aileo';
+  const s = slug?.trim() || process.env.TENANT_SLUG?.trim() || 'watee';
   return store.getTenantBySlug(s);
 }
 

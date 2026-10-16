@@ -1,24 +1,79 @@
+/* วาที (Watee) by AILEO — โลก "ใบบันทึกรับสาย หมึกคาร์บอน"
+   กระดาษขาวบนโต๊ะสีฟ้าอมเทา · หมึกพิมพ์แบบฟอร์มสีกรมท่า · สิ่งที่ระบบเขียนเป็นหมึกคาร์บอนน้ำเงิน
+   · ตรายางหมึกม่วง · Manrope (อังกฤษ/ตัวเลข) + LINE Seed Sans TH (ไทย, self-host) */
+@font-face {
+  font-family: 'LINE Seed Sans TH';
+  src: url('/fonts/LINESeedSansTH-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LINE Seed Sans TH';
+  src: url('/fonts/LINESeedSansTH-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LINE Seed Sans TH';
+  src: url('/fonts/LINESeedSansTH-ExtraBold.woff2') format('woff2');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Manrope Variable';
+  src: url('/fonts/manrope-latin-wght-normal.woff2') format('woff2-variations');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  --bg: #faf9f7;
-  --surface: #ffffff;
-  --panel: #f3f2ee;
-  --panel-2: #edebe5;
-  --ink: #191917;
-  --ink-2: #57554f;
-  --ink-3: #85827a;
-  --line: #e5e3dd;
-  --line-2: #d4d1c9;
-  --accent: #1f6f4a;
+  color-scheme: light;
+
+  /* โต๊ะและกระดาษ */
+  --bg: #eef1f8; /* desk */
+  --surface: #ffffff; /* paper */
+  --panel: #eaefff; /* carbon copy sheet */
+  --panel-2: #e1e6f4; /* faint rule */
+
+  /* หมึกพิมพ์แบบฟอร์ม */
+  --ink: #0b1231;
+  --ink-2: #3d4568;
+  --ink-3: #5a6286;
+
+  --line: #e1e6f4; /* rule-soft */
+  --line-2: #cbd3ec; /* rule */
+
+  /* หมึกที่ระบบเขียน */
+  --accent: #285bff; /* carbon */
+  --accent-deep: #1d47d6; /* carbon-deep */
   --accent-ink: #ffffff;
-  --accent-soft: #e9f2ec;
-  --ok: #1f7a4d;
-  --warn: #8a6100;
-  --err: #a5322b;
-  --radius: 14px;
-  --radius-sm: 9px;
-  --shadow: 0 1px 2px rgba(25, 25, 23, 0.04), 0 10px 26px -14px rgba(25, 25, 23, 0.16);
-  --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans Thai", "Helvetica Neue", Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --accent-soft: #c9d6ff; /* carbon-soft — เฉพาะ selection */
+
+  /* ตรายาง + สถานะ (ไม่มีเขียวในพาเลตต์: "สำเร็จ" ใช้คาร์บอนเข้ม) */
+  --stamp: #7444e8;
+  --ok: #1d47d6;
+  --warn: #7444e8;
+  --err: #c8324b;
+
+  /* แถบกรมท่า (navy band) — ตัวอักษรบนแถบ */
+  --band-ink: #ffffff;
+  --band-ink-2: rgba(255, 255, 255, 0.74);
+  --band-ink-3: rgba(255, 255, 255, 0.52);
+  --band-line: rgba(255, 255, 255, 0.16);
+  --band-hover: rgba(255, 255, 255, 0.1);
+
+  --radius: 3px; /* ใบกระดาษ */
+  --radius-sm: 8px; /* คอนโทรล */
+  --shadow: 0 1px 0 rgba(11, 18, 49, 0.06), 0 2px 4px rgba(11, 18, 49, 0.05), 0 18px 36px -18px rgba(11, 18, 49, 0.28);
+
+  --sans: 'Manrope Variable', 'LINE Seed Sans TH', ui-sans-serif, system-ui, sans-serif;
+  /* ระบบดีไซน์ไม่มีฟอนต์ mono — ตัวเลขใช้ tabular figures */
+  --mono: var(--sans);
+  --ease-paper: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 *,
@@ -38,7 +93,7 @@ body {
   color: var(--ink);
   font-family: var(--sans);
   font-size: 14px;
-  line-height: 1.5;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -62,8 +117,8 @@ h1,
 h2,
 h3 {
   margin: 0;
-  font-weight: 600;
-  letter-spacing: -0.018em;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   text-wrap: balance;
 }
 
@@ -97,8 +152,8 @@ a {
 }
 
 .sidebar {
-  background: var(--panel);
-  border-right: 1px solid var(--line);
+  background: var(--ink); /* แถบกรมท่า */
+  border-right: 0;
   padding: 18px 12px;
   display: flex;
   flex-direction: column;
@@ -116,26 +171,29 @@ a {
 }
 
 .brand-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-ink);
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--surface);
   display: grid;
   place-items: center;
-  font-weight: 600;
-  font-size: 12px;
-  letter-spacing: -0.02em;
+  flex: none;
+}
+
+.brand-mark svg {
+  width: 20px;
+  height: 20px;
 }
 
 .brand-name {
-  font-weight: 600;
+  font-weight: 800;
   letter-spacing: -0.02em;
+  color: var(--band-ink);
 }
 
 .brand-sub {
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--band-ink-3);
 }
 
 .nav {
@@ -146,7 +204,7 @@ a {
 
 .nav-label {
   font-size: 11px;
-  color: var(--ink-3);
+  color: var(--band-ink-3);
   padding: 10px 10px 4px;
 }
 
@@ -156,35 +214,48 @@ a {
   gap: 9px;
   padding: 7px 10px;
   border-radius: var(--radius-sm);
-  color: var(--ink-2);
-  font-weight: 500;
-  transition: background 150ms ease, color 150ms ease;
+  color: var(--band-ink-2);
+  font-weight: 600;
+  transition: background 150ms var(--ease-paper), color 150ms var(--ease-paper);
 }
 
 .nav a:hover {
-  background: var(--panel-2);
-  color: var(--ink);
+  background: var(--band-hover);
+  color: var(--band-ink);
 }
 
 .nav a[data-active='true'] {
-  background: var(--surface);
+  background: var(--surface); /* ใบกระดาษวางบนแถบ */
   color: var(--ink);
   box-shadow: var(--shadow);
 }
 
 .nav a svg {
   flex: none;
-  opacity: 0.75;
+  opacity: 0.8;
 }
 
 .sidebar-foot {
   margin-top: auto;
   padding: 10px;
   font-size: 11px;
-  color: var(--ink-3);
-  border-top: 1px solid var(--line);
+  color: var(--band-ink-3);
+  border-top: 1px solid var(--band-line);
   display: grid;
   gap: 3px;
+}
+
+.sidebar-foot .dim {
+  color: var(--band-ink-3);
+}
+
+.sidebar-foot .logout {
+  color: var(--band-ink-2);
+}
+
+.sidebar-foot .logout:hover:not(:disabled) {
+  background: var(--band-hover);
+  color: var(--band-ink);
 }
 
 .dot {
@@ -196,10 +267,10 @@ a {
   vertical-align: 1px;
 }
 .dot.on {
-  background: var(--ok);
+  background: var(--accent-soft);
 }
 .dot.off {
-  background: var(--ink-3);
+  background: var(--band-ink-3);
 }
 
 /* ---------- main ---------- */
@@ -215,6 +286,9 @@ a {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 22px;
+  /* เส้นคู่ใต้หัวเรื่อง (form furniture) */
+  padding-bottom: 14px;
+  border-bottom: 3px double var(--line-2);
 }
 
 .page-head p {
@@ -237,8 +311,9 @@ a {
 /* ---------- cards & tables ---------- */
 .card {
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius);
+  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
@@ -293,7 +368,7 @@ tbody tr {
 }
 
 tbody tr:hover {
-  background: #fcfbf9;
+  background: var(--panel);
 }
 
 .num {
@@ -304,6 +379,7 @@ tbody tr:hover {
 .mono {
   font-family: var(--mono);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .muted {
@@ -350,39 +426,36 @@ tbody tr:hover {
   color: var(--ink-3);
 }
 
-/* ---------- chips ---------- */
+/* ---------- chips (ตรายาง: ขอบบาง ไม่ทึบ) ---------- */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: 4px;
   border: 1px solid var(--line-2);
-  background: var(--panel);
+  background: transparent;
   color: var(--ink-2);
   white-space: nowrap;
 }
 .chip.ok {
-  color: var(--ok);
-  border-color: #bfdcc9;
-  background: #f0f7f2;
+  color: var(--accent-deep);
+  border-color: var(--accent-soft);
 }
 .chip.warn {
-  color: var(--warn);
-  border-color: #e6d5a8;
-  background: #fbf6e9;
+  color: var(--stamp);
+  border-color: #d9cbf9;
 }
 .chip.err {
   color: var(--err);
-  border-color: #e7c3c0;
-  background: #fdf1f0;
+  border-color: #eccdd3;
 }
 .chip.accent {
-  color: var(--accent);
-  border-color: #bfdcc9;
-  background: var(--accent-soft);
+  color: var(--accent-deep);
+  border-color: var(--accent-soft);
+  background: var(--panel);
 }
 
 /* ---------- buttons & forms ---------- */
@@ -413,7 +486,7 @@ tbody tr:hover {
   color: var(--accent-ink);
 }
 .btn.primary:hover:not(:disabled) {
-  background: #1a5f40;
+  background: var(--accent-deep);
 }
 .btn.ghost {
   border-color: transparent;
@@ -581,8 +654,8 @@ label {
   color: var(--ink-2);
 }
 .banner.err {
-  border-color: #e7c3c0;
-  background: #fdf1f0;
+  border-color: #eccdd3;
+  background: #fdf3f5;
   color: var(--err);
 }
 
@@ -629,7 +702,7 @@ label {
   display: grid;
   place-items: center;
   padding: 24px;
-  background: var(--panel);
+  background: var(--bg);
 }
 
 .login-card {
@@ -637,9 +710,9 @@ label {
   max-width: 360px;
   display: grid;
   gap: 12px;
-  padding: 26px 24px;
+  padding: 28px 26px;
   background: var(--surface);
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
@@ -703,4 +776,11 @@ tr.row-link:hover td {
   gap: 6px;
   justify-content: flex-end;
   align-items: center;
+}
+
+/* บนการ์ดสีขาว ไม่ต้องมีกล่องขาวรองตรา */
+.login-card .brand-mark {
+  background: transparent;
+  width: 26px;
+  height: 26px;
 }

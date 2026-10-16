@@ -1,4 +1,4 @@
--- AILEO Call Center — schema (multi-tenant ready)
+-- WATEE Call Center — schema (multi-tenant ready)
 -- รันซ้ำได้ (idempotent): migrate() จะ execute ไฟล์นี้ทุกครั้งที่ boot
 -- ต้องใช้ image ที่มี pgvector (ดู docker-compose.yml: pgvector/pgvector:pg16)
 create extension if not exists pgcrypto;

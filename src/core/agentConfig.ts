@@ -46,11 +46,11 @@ export function invalidateActiveAgent() {
 }
 
 async function resolve(): Promise<ResolvedAgent> {
-  const slug = process.env.TENANT_SLUG?.trim() || 'aileo';
+  const slug = process.env.TENANT_SLUG?.trim() || 'watee';
   const envProfile = getActiveProfile();
   const byId = new Map(allProfiles().map((p) => [p.id, p]));
 
-  const tenant = await store.ensureTenant(slug, process.env.TENANT_NAME?.trim() || 'AILEO');
+  const tenant = await store.ensureTenant(slug, process.env.TENANT_NAME?.trim() || 'WATEE');
   let row: AgentRow | undefined;
 
   if (tenant) {

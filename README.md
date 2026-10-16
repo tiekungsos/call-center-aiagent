@@ -1,4 +1,4 @@
-# AILEO Call Center — Gemini 3.8 Live
+# WATEE Call Center — Gemini 3.8 Live
 
 AI รับสายโทรศัพท์แทนเจ้าหน้าที่ด่านแรก 24 ชม. ตอบคำถามจากฐานความรู้ที่หน่วยงานอนุมัติ
 และ **โอนสายหาคนทันที** เมื่อเป็นเหตุด่วน / เรื่องเกินขอบเขต / ระบบ AI ล่ม
@@ -141,7 +141,7 @@ Console เรียก API ผ่าน **proxy ของตัวเอง** (
 
 ### Login และการป้องกัน (P3)
 - ผู้ใช้เก็บในตาราง `console_users` (Postgres) — รหัสผ่านเก็บเป็น **scrypt** (`src/core/auth.ts`)
-- session = cookie `aileo_session` ที่เซ็น HMAC-SHA256 (HttpOnly, SameSite=Lax, `Secure` ตามค่าเริ่มต้น)
+- session = cookie `watee_session` ที่เซ็น HMAC-SHA256 (HttpOnly, SameSite=Lax, `Secure` ตามค่าเริ่มต้น)
   อายุตั้งได้ด้วย `CONSOLE_SESSION_TTL_HOURS` (default 12 ชม.)
 - `console/proxy.ts` กันทุกหน้าและ `/api/*` — ตรวจ session กับ `GET /api/auth/me` ของ bridge
   (ปิด/ลบผู้ใช้จึงมีผลทันที) ถ้าไม่มี session จะ redirect ไป `/login` (ส่วน `/api/*` ตอบ 401 JSON)

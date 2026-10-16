@@ -66,10 +66,10 @@ export default function SettingsPage() {
           <h2>เพิ่ม webhook</h2>
           <label>
             URL ปลายทาง
-            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://crm.example.com/aileo/hook" />
+            <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://crm.example.com/watee/hook" />
           </label>
           <label>
-            Secret (ใช้เซ็น HMAC-SHA256 ใน header x-aileo-signature)
+            Secret (ใช้เซ็น HMAC-SHA256 ใน header x-watee-signature)
             <input value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="ไม่บังคับ" />
           </label>
           <div>

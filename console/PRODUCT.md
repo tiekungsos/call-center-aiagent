@@ -1,7 +1,7 @@
-# AILEO Console
+# WATEE Console
 
 ## What it is
-Operator console for the AILEO AI call-center. One place for the people who run the
+Operator console for the WATEE (วาที) AI call-center. One place for the people who run the
 service to watch traffic, read conversations, tune the agent, and manage outreach.
 
 ## Who uses it
@@ -22,5 +22,10 @@ Operate. The interface should disappear into the task: earned familiarity, one t
 family, restrained color, consistent controls, real loading/empty/error states.
 
 ## Direction
-Light, minimal, warm-neutral. Accent is a single deep green used only for primary
-actions, current selection and state. Data is tabular. No decorative motion.
+Shares the WATEE brand world with watee.co ("ใบบันทึกรับสาย หมึกคาร์บอน"): white bond paper
+on a pale blue-grey desk, navy form ink for everything printed, carbon blue for what the
+system writes (primary actions, links, current selection), violet reserved for stamps and
+outcomes. Sidebar is a solid navy band with the active item as a paper chip. Manrope for
+Latin/numerals, LINE Seed Sans TH for Thai, tabular figures for every time and number.
+Sheets are near-square (3px) with a soft navy-tinted shadow; controls take 8px. No
+gradients or glows in UI fills (the logo keeps its own gradient), no decorative motion.

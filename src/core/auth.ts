@@ -16,7 +16,7 @@ export interface ConsoleUser {
   created_at: string;
 }
 
-export const SESSION_COOKIE = 'aileo_session';
+export const SESSION_COOKIE = 'watee_session';
 export const ROLES = ['admin', 'viewer'] as const;
 
 const TTL_MS = Math.max(1, Number(process.env.CONSOLE_SESSION_TTL_HOURS ?? 12) || 12) * 3600_000;

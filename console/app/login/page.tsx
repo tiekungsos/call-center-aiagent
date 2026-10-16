@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { WateeMark } from '@/components/WateeMark';
 
 function LoginForm() {
   const router = useRouter();
@@ -34,14 +35,16 @@ function LoginForm() {
 
   return (
     <form className="login-card" onSubmit={submit}>
-      <div className="brand" style={{ marginBottom: 4 }}>
+      <div className="brand" style={{ marginBottom: 4, padding: '0 0 2px' }}>
         <span className="brand-mark" aria-hidden>
-          AI
+          <WateeMark size={20} />
         </span>
         <span>
-          <span className="brand-name">AILEO</span>
+          <span className="brand-name" style={{ color: 'var(--ink)' }}>
+            วาที
+          </span>
           <span className="brand-sub" style={{ display: 'block' }}>
-            Console
+            WATEE Console
           </span>
         </span>
       </div>

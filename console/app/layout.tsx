@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'AILEO Console',
-  description: 'ศูนย์ควบคุม AI คอลเซ็นเตอร์ — สาย, แชท, agent, คลังความรู้, analytics',
+  title: 'วาที Console',
+  description: 'ศูนย์ควบคุมวาที (WATEE) — สาย, แชท, agent, คลังความรู้, analytics',
   // console ภายใน — ไม่ให้ search engine/bot จัดทำดัชนี (เสริม X-Robots-Tag ใน next.config.mjs)
   robots: { index: false, follow: false, nocache: true },
 };

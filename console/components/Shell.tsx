@@ -15,6 +15,7 @@ import {
   IconSliders,
   IconUsers,
 } from './icons';
+import { WateeMark } from './WateeMark';
 
 const NAV = [
   { href: '/', label: 'ภาพรวม', icon: IconPulse },
@@ -62,12 +63,12 @@ export function Shell({
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark" aria-hidden>
-            AI
+            <WateeMark size={20} />
           </span>
           <span>
-            <span className="brand-name">AILEO</span>
+            <span className="brand-name">วาที</span>
             <span className="brand-sub" style={{ display: 'block' }}>
-              Console
+              WATEE Console
             </span>
           </span>
         </div>

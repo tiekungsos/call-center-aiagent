@@ -10,7 +10,7 @@ export default {
   turbopack: { root },
   // console เรียก API ผ่าน proxy /api (ดู app/api/[...path]/route.ts) จึงไม่ต้องมี NEXT_PUBLIC_API_URL
   env: {
-    NEXT_PUBLIC_TENANT: process.env.NEXT_PUBLIC_TENANT ?? process.env.TENANT_SLUG ?? 'aileo',
+    NEXT_PUBLIC_TENANT: process.env.NEXT_PUBLIC_TENANT ?? process.env.TENANT_SLUG ?? 'watee',
   },
   // console ภายใน — สั่ง search engine/bot ไม่ให้จัดทำดัชนี (คู่กับ app/robots.ts)
   async headers() {

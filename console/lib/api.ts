@@ -3,7 +3,7 @@
 export const SERVER_API = process.env.API_URL ?? 'http://127.0.0.1:8090';
 /** client component เรียก path เดียวกันกับ console แล้วให้ app/api/[...path] proxy ต่อไป */
 export const CLIENT_API = '';
-export const TENANT = process.env.NEXT_PUBLIC_TENANT ?? 'aileo';
+export const TENANT = process.env.NEXT_PUBLIC_TENANT ?? 'watee';
 
 /** header ยืนยันตัวตนกับ bridge (ถ้าตั้ง API_TOKEN) — ใช้ฝั่ง server เท่านั้น ไม่รั่วไป browser */
 export const SERVER_AUTH: Record<string, string> = process.env.API_TOKEN?.trim()

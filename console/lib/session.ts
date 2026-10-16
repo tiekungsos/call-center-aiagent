@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { SERVER_API, SERVER_AUTH } from './api';
 
-export const SESSION_COOKIE = 'aileo_session';
+export const SESSION_COOKIE = 'watee_session';
 
 export interface SessionUser {
   id: string;
